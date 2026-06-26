@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
 from flask import Flask, render_template, request
-import os, json, tempfile, datetime, base64, mimetypes
+import os, json, tempfile, datetime, base64, mimetypes, time
 
 from transcribe import transcribe_audio
 from llm import extract_machines, render_markdown
@@ -31,13 +31,17 @@ def index():
 def process():
     transcript = ""
     image_note = ""
+    t_start = time.perf_counter()
+    t_stt = 0.0
 
     # 1) ไฟล์เสียงประชุม -> ข้อความ
     audio = request.files.get("audio")
     if audio and audio.filename:
         path = os.path.join(UPLOAD, audio.filename)
         audio.save(path)
+        _t0 = time.perf_counter()
         transcript = transcribe_audio(path)
+        t_stt = time.perf_counter() - _t0
 
     # 2) รูปภาพ + caption ใต้รูป (เช่น รูปมอเตอร์ + "มอเตอร์เสีย")
     image = request.files.get("image")
@@ -61,7 +65,15 @@ def process():
         context += f"# หมายเหตุจากรูปภาพ\n{image_note}\n"
 
     # 3) Qwen3-VL ดึงข้อมูลเครื่องจักรเป็น JSON (ส่งรูปเข้าตรงๆ ถ้าเปิด vision)
+    _t0 = time.perf_counter()
     data = extract_machines(context, image_path=image_path)
+    t_llm = time.perf_counter() - _t0
+    t_total = time.perf_counter() - t_start
+    timing = {
+        "stt": round(t_stt, 1),
+        "llm": round(t_llm, 1),
+        "total": round(t_total, 1),
+    }
 
     # 4) พรีวิว .md (ใส่วันที่+เวลา)
     now = datetime.datetime.now()
@@ -82,6 +94,7 @@ def process():
             "markdown": markdown,
             "date": today,
             "datetime": when,
+            "timing": timing,
             "machines_json": json.dumps(data.get("machines", []), ensure_ascii=False),
         },
     )

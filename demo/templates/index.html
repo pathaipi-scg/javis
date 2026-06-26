@@ -161,6 +161,16 @@
     <div class="card">
       <h2>📋 ผลลัพธ์</h2>
 
+      {% if result.timing %}
+      <div class="card" style="background:#eef6f6;border-color:var(--teal);margin-bottom:14px;padding:12px 16px;">
+        ⏱️ <b>เวลาประมวลผล:</b>
+        ถอดเสียง (STT) <b>{{ result.timing.stt }}s</b> ·
+        Qwen (สรุป) <b>{{ result.timing.llm }}s</b> ·
+        รวม <b>{{ result.timing.total }}s</b>
+        <div class="hint">เก็บไว้เทียบตอนได้ GPU — STT คือส่วนที่ GPU จะช่วยให้เร็วขึ้นมาก</div>
+      </div>
+      {% endif %}
+
       <div class="grid">
         <div>
           <label>Transcript (จากเสียง)</label>
