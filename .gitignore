@@ -26,3 +26,6 @@ KM/
 # ide
 .vscode/
 .idea/
+
+# todo ส่วนตัว
+/TODO.md

@@ -1,6 +1,10 @@
 """
-ถอดเสียงประชุม -> ข้อความ ด้วย faster-whisper
-ถ้ายังไม่ลง faster-whisper -> คืน mock transcript เพื่อให้ demo เดินต่อได้
+ถอดเสียงประชุม -> ข้อความ
+
+มี 3 ชั้น (graceful degradation):
+  1. ถ้าตั้ง STT_BASE_URL -> ส่งไฟล์ไปถอดที่ STT service บน server (แนะนำ, ใช้ GPU server ได้)
+  2. ไม่งั้น -> ถอดในเครื่องด้วย faster-whisper
+  3. ทั้งคู่ใช้ไม่ได้ -> คืน mock transcript เพื่อให้ demo เดินต่อได้
 """
 import os
 from dotenv import load_dotenv
@@ -9,9 +13,32 @@ load_dotenv()
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "large-v3")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")  # "cuda" ถ้ามี GPU
 WHISPER_LANG = os.getenv("WHISPER_LANG", "th")       # "auto" = ตรวจภาษาเอง, "en" = อังกฤษ
+STT_BASE_URL = os.getenv("STT_BASE_URL", "").strip() # เช่น http://10.28.254.4:8900 ; ว่าง = ถอดในเครื่อง
+STT_TIMEOUT = int(os.getenv("STT_TIMEOUT", "1800"))  # วินาที (คลิปยาวใช้เวลานาน)
 
 
 def transcribe_audio(path):
+    """ถอดเสียง -> ข้อความ. ลอง server ก่อน (ถ้าตั้ง), ตกไป local, สุดท้าย mock"""
+    if STT_BASE_URL:
+        try:
+            return _transcribe_remote(STT_BASE_URL, path)
+        except Exception as e:
+            print(f"[STT] remote ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ถอดในเครื่องแทน")
+    return _transcribe_local(path)
+
+
+def _transcribe_remote(base_url, path):
+    """ส่งไฟล์เสียงไปถอดที่ STT service บน server -> คืน transcript"""
+    import requests
+    url = base_url.rstrip("/") + "/transcribe"
+    with open(path, "rb") as f:
+        resp = requests.post(url, files={"file": (os.path.basename(path), f)}, timeout=STT_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()["transcript"]
+
+
+def _transcribe_local(path):
+    """ถอดในเครื่องด้วย faster-whisper; ถ้าไม่มี -> mock"""
     try:
         from faster_whisper import WhisperModel
         compute = "float16" if WHISPER_DEVICE == "cuda" else "int8"

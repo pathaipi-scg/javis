@@ -1,11 +1,14 @@
 # จำเป็นสำหรับ demo เว็บ
-flask>=3.0
+flask==3.1.3
 
 # เรียก Qwen3 ผ่าน OpenAI-compatible API (vLLM/Ollama/LM Studio)
-openai>=1.40
+openai==2.44.0
 
 # โหลดค่าจาก .env
-python-dotenv>=1.0
+python-dotenv==1.2.2
+
+# ส่งไฟล์เสียงไปถอดที่ STT service บน server (โหมด remote)
+requests>=2.31
 
 # ถอดเสียง (option — ไม่ลงก็ได้ จะใช้ mock transcript)
-# faster-whisper>=1.0
+# faster-whisper==1.2.1
