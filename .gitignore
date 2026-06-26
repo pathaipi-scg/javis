@@ -1,0 +1,28 @@
+# secrets / config ส่วนตัว
+.env
+demo/.env
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# ไฟล์อัป/ชั่วคราว
+demo/media/
+*.wav
+*.mp3
+*.m4a
+*.mp4
+media/inbox/
+media/processed/
+
+# obsidian vault (ข้อมูลจริง ไม่ควรขึ้น repo)
+vault/
+KM/
+
+# ide
+.vscode/
+.idea/
