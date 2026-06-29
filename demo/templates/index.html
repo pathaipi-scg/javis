@@ -130,10 +130,38 @@
       font-size: 13px;
       margin: 6px 0 18px;
     }
+
+    .nav {
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      padding: 0 24px;
+      display: flex;
+      gap: 4px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav a {
+      padding: 16px 18px;
+      text-decoration: none;
+      color: #555;
+      font-size: 14px;
+      border-bottom: 3px solid transparent;
+    }
+
+    .nav a:hover { color: var(--teal); }
+    .nav a.active { color: var(--teal); border-bottom-color: var(--teal); font-weight: 600; }
   </style>
 </head>
 
 <body>
+  <nav class="nav">
+    <a href="/" class="active">📥 ป้อนข้อมูล</a>
+    <a href="/search">🔍 ค้นเคส</a>
+    <a href="/dashboard">📊 Dashboard</a>
+    <a href="/ask">🤖 ถาม JARVIS</a>
+  </nav>
   <div class="wrap">
     <h1>🛠️ Meeting → Knowledge Base <span class="pill">Demo</span></h1>
     <div class="flow">เสียงประชุม + รูป(caption) → WhisperX → Qwen3-VL → ข้อมูลเครื่องจักร → .md (Obsidian)</div>

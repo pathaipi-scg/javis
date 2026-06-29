@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}ค้นเคส — JARVIS{% endblock %}
+
+{% block body %}
+<h1>🔍 ค้นเคส <span class="mock">MOCK — ยังไม่ต่อ SQL/FAISS จริง</span></h1>
+<div class="flow">พิมพ์คำถาม → (ภายหลัง) ค้น SQL keyword + FAISS semantic → เจอเคสใกล้เคียง</div>
+
+<form class="card" action="/search" method="get">
+  <label>พิมพ์คำค้น / อาการที่เจอ</label>
+  <input type="text" name="q" value="{{ q or '' }}" placeholder="เช่น แรงดันไฮดรอลิกตก, มอเตอร์ร้อน">
+  <div class="hint">เฟสแรกค้นแบบ keyword ก่อน แล้วค่อยอัปเป็น semantic (เจอแม้พิมพ์คนละคำ)</div>
+  <button type="submit">ค้นหา</button>
+</form>
+
+{% if results %}
+<div class="card">
+  <h2>ผลการค้นหา — เจอ {{ results|length }} เคส</h2>
+  <table>
+    <tr>
+      <th>case_id</th>
+      <th>เครื่อง</th>
+      <th>อาการ</th>
+      <th>วิธีแก้</th>
+      <th>คะแนนความใกล้</th>
+    </tr>
+    {% for r in results %}
+    <tr>
+      <td>{{ r.case_id }}</td>
+      <td>{{ r.machine }}</td>
+      <td>{{ r.symptom }}</td>
+      <td>{{ r.solution }}</td>
+      <td>{{ r.score }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="hint">* คะแนนความใกล้ = ของจริงจะมาจาก FAISS (ยิ่งสูงยิ่งตรง)</div>
+</div>
+{% endif %}
+{% endblock %}

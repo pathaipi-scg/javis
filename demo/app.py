@@ -100,6 +100,54 @@ def process():
     )
 
 
+# ─────────────────────────────────────────────────────────────
+# หน้าใหม่ (ด่าน 4: Serve) — ตอนนี้เป็น MOCK ให้เห็นภาพก่อน
+# ของจริงต้องต่อ SQL (search/dashboard) + FAISS/Qwen (ask) + TTS
+# ─────────────────────────────────────────────────────────────
+
+@app.route("/search", methods=["GET"])
+def search():
+    q = request.args.get("q", "").strip()
+    results = []
+    if q:
+        # MOCK: ของจริงจะค้นจาก SQL (keyword) + FAISS (semantic)
+        results = [
+            {"case_id": "MTN-2026-0142", "machine": "Forming Press",
+             "symptom": "แรงดันไฮดรอลิกตกเป็นระยะ", "solution": "เปลี่ยนชุดซีล V-203 + ไล่ลม", "score": "0.91"},
+            {"case_id": "MTN-2026-0098", "machine": "Forming Press",
+             "symptom": "เครื่องหยุดกลางรอบ", "solution": "ตรวจวาล์ว + เติมน้ำมันไฮดรอลิก", "score": "0.74"},
+        ]
+    return render_template("search.html", active="search", q=q, results=results)
+
+
+@app.route("/dashboard", methods=["GET"])
+def dashboard():
+    # MOCK: ของจริงจะ SELECT COUNT/SUM/GROUP BY จาก SQL
+    stats = {"total": 142, "downtime": 3820, "machines": 27}
+    categories = [
+        {"name": "hydraulic", "count": 18},
+        {"name": "motor / bearing", "count": 14},
+        {"name": "electrical", "count": 9},
+        {"name": "sensor", "count": 6},
+        {"name": "pneumatic", "count": 4},
+    ]
+    return render_template("dashboard.html", active="dashboard", stats=stats, categories=categories)
+
+
+@app.route("/ask", methods=["GET", "POST"])
+def ask():
+    q = request.form.get("q", "").strip() if request.method == "POST" else ""
+    answer = None
+    if q:
+        # MOCK: ของจริง = ค้นเคสที่เกี่ยว (RAG) -> Qwen สรุป -> แนบ case_id
+        answer = {
+            "text": "[MOCK] อาการแรงดันไฮดรอลิกตกของ Forming Press มักเกิดจากซีลวาล์วเสื่อม "
+                    "วิธีแก้คือเปลี่ยนชุดซีลแล้วไล่ลมออกจากระบบ ใช้เวลาซ่อมราว 45 นาที",
+            "citations": ["MTN-2026-0142", "MTN-2026-0098"],
+        }
+    return render_template("ask.html", active="ask", q=q, answer=answer)
+
+
 @app.route("/save", methods=["POST"])
 def save():
     markdown = request.form.get("markdown", "")
