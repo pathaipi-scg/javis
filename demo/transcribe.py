@@ -17,6 +17,25 @@ STT_BASE_URL = os.getenv("STT_BASE_URL", "").strip() # เช่น http://10.28
 STT_TIMEOUT = int(os.getenv("STT_TIMEOUT", "1800"))  # วินาที (คลิปยาวใช้เวลานาน)
 
 
+def _add_cuda_dll_dirs():
+    """ดัน path ของ cuDNN/cuBLAS ที่ pip ลงมา (nvidia-*-cu12) เข้า PATH
+    บน Windows ctranslate2 โหลด cublas64_12.dll/cudnn64_9.dll แบบ lazy
+    ถ้าไม่ทำ จะเจอ 'Library cublas64_12.dll is not found' ตอนรัน GPU แล้วตกไป mock"""
+    import glob, site
+    sp_dirs = list(site.getsitepackages()) + [site.getusersitepackages()]
+    for sp in sp_dirs:
+        for bindir in glob.glob(os.path.join(sp, "nvidia", "*", "bin")):
+            if os.path.isdir(bindir):
+                try:
+                    os.add_dll_directory(bindir)
+                except Exception:
+                    pass
+                os.environ["PATH"] = bindir + os.pathsep + os.environ.get("PATH", "")
+
+
+_add_cuda_dll_dirs()
+
+
 def transcribe_audio(path):
     """ถอดเสียง -> ข้อความ. ลอง server ก่อน (ถ้าตั้ง), ตกไป local, สุดท้าย mock"""
     if STT_BASE_URL:
