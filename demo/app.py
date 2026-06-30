@@ -12,10 +12,10 @@ from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
 from flask import Flask, render_template, request
-import os, tempfile, re
+import os, tempfile, re, time
 
-from transcribe import transcribe_audio
-import rag
+from transcribe import transcribe_audio, WHISPER_MODEL, WHISPER_DEVICE, STT_BASE_URL
+import rag, llm
 
 app = Flask(__name__)
 UPLOAD = tempfile.gettempdir()
@@ -147,6 +147,38 @@ def ask():
                 "citations": ["MTN-2026-0142", "MTN-2026-0098"],
             }
     return render_template("ask.html", active="ask", q=q, answer=answer, mock=used_mock)
+
+
+@app.route("/stt", methods=["GET", "POST"])
+def stt():
+    """หน้าทดสอบ STT: อัปคลิป -> กดแปลง -> โชว์ข้อความที่ถอดได้
+    ไว้วัดความแม่นของ Whisper กับเสียงจริง (ไม่เกี่ยวกับการบันทึกเคส)"""
+    result = None
+    if request.method == "POST":
+        audio = request.files.get("audio")
+        if audio and audio.filename:
+            apath = os.path.join(UPLOAD, audio.filename)
+            audio.save(apath)
+            t0 = time.time()
+            text = transcribe_audio(apath)
+            stt_sec = round(time.time() - t0, 1)
+            # ต่อท่อ: เอา transcript ไปให้ Typhoon สรุป/ดึงข้อมูลเครื่องจักร
+            t1 = time.time()
+            data = llm.extract_machines(text)
+            result = {
+                "filename": audio.filename,
+                "text": text,
+                "seconds": stt_sec,
+                # transcribe_audio คืนสตริงขึ้นต้น "[MOCK" เมื่อยังต่อ Whisper ไม่ได้
+                "is_mock": text.lstrip().startswith("[MOCK"),
+                # ผลสรุปจาก Typhoon
+                "summary": data.get("summary", ""),
+                "machines": data.get("machines", []),
+                "llm_seconds": round(time.time() - t1, 1),
+                "llm_mock": str(data.get("summary", "")).startswith("[MOCK"),
+            }
+    cfg = {"model": WHISPER_MODEL, "device": WHISPER_DEVICE, "remote": bool(STT_BASE_URL)}
+    return render_template("stt.html", active="stt", result=result, cfg=cfg)
 
 
 if __name__ == "__main__":
