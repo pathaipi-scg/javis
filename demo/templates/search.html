@@ -1,39 +1,95 @@
 {% extends "base.html" %}
 {% block title %}ค้นเคส — JARVIS{% endblock %}
 
+{% block style %}
+  .sub { color: #778; font-size: 13.5px; margin: 4px 0 18px; }
+
+  .searchbar { background: #fff; border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px; margin-bottom: 16px; box-shadow: 0 6px 18px -12px rgba(0,0,0,.3); }
+  .searchbar .row { display: flex; gap: 10px; align-items: center; }
+  .searchbar .ipt { flex: 1; display: flex; align-items: center; gap: 8px;
+    border: 1px solid #cdd4d4; border-radius: 10px; padding: 0 12px; }
+  .searchbar .ipt span { color: #9aa; }
+  .searchbar .ipt input { border: 0; outline: 0; font-size: 15px; padding: 12px 0;
+    width: 100%; font-family: inherit; background: transparent; }
+  .searchbar .go { margin: 0; padding: 12px 26px; }
+
+  .smarthint { margin-top: 12px; font-size: 12.5px; color: #2f8a89; background: #e9f4f4;
+    border: 1px solid #c4e2e2; border-radius: 8px; padding: 8px 12px; }
+
+  .tagfacet { background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin: 14px 0 4px; }
+  .tagfacet .ttl { font-size: 12px; color: #778; font-weight: 600; margin-bottom: 9px; }
+  .tagfacet .ttl b { color: #2f8a89; }
+  .ftags { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ftag { font-size: 12.5px; background: #eef4f4; color: #2f8a89; border: 1px solid #c4e2e2;
+    border-radius: 20px; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px; }
+  .ftag.on { background: #2f8a89; color: #fff; border-color: #2f8a89; }
+  .ftag .n { font-size: 11px; background: rgba(0,0,0,.08); border-radius: 10px; padding: 0 6px; font-weight: 600; }
+  .ftag.on .n { background: rgba(255,255,255,.25); }
+
+  .rescount { font-size: 13px; color: #667; margin: 18px 2px 10px; }
+  .rescount b { color: #1d2b2b; }
+  .case { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+    margin-bottom: 12px; display: flex; gap: 14px; transition: .15s; }
+  .case:hover { box-shadow: 0 8px 20px -12px rgba(0,0,0,.35); transform: translateY(-2px); }
+  .thumb { flex: none; width: 96px; height: 72px; border-radius: 8px; display: flex;
+    align-items: center; justify-content: center; font-size: 11px; color: #fff; text-align: center; }
+  .case .meta { flex: 1; min-width: 0; }
+  .case .meta .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .cid { font-family: "Space Grotesk", monospace; font-size: 12px; color: #3a9d9c; font-weight: 600; }
+  .score { font-size: 11px; background: #eef6e9; color: #4a8a3a; border: 1px solid #cfe6c4;
+    border-radius: 20px; padding: 1px 9px; }
+  .mname { font-weight: 600; font-size: 15px; margin: 3px 0; }
+  .sym { font-size: 13.5px; color: #556; }
+  .tagrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+  .t { font-size: 11px; background: #f0f3f3; color: #5a6a6a; border-radius: 20px; padding: 2px 9px; }
+  .t.hl { background: #fff0d0; color: #9a6a00; }
+{% endblock %}
+
 {% block body %}
 <h1>🔍 ค้นเคส <span class="mock">MOCK — ยังไม่ต่อ SQL/FAISS จริง</span></h1>
-<div class="flow">พิมพ์คำถาม → (ภายหลัง) ค้น SQL keyword + FAISS semantic → เจอเคสใกล้เคียง</div>
+<div class="sub">พิมพ์อาการ/คำค้นในช่อง — ระบบจะค้นแบบผสม (keyword + semantic) ให้เอง</div>
 
-<form class="card" action="/search" method="get">
-  <label>พิมพ์คำค้น / อาการที่เจอ</label>
-  <input type="text" name="q" value="{{ q or '' }}" placeholder="เช่น แรงดันไฮดรอลิกตก, มอเตอร์ร้อน">
-  <div class="hint">เฟสแรกค้นแบบ keyword ก่อน แล้วค่อยอัปเป็น semantic (เจอแม้พิมพ์คนละคำ)</div>
-  <button type="submit">ค้นหา</button>
+<form class="searchbar" action="/search" method="get">
+  <div class="row">
+    <div class="ipt"><span>🔍</span>
+      <input type="text" name="q" value="{{ q or '' }}"
+             placeholder="พิมพ์อาการ เช่น มอเตอร์ร้อน, วาล์วรั่ว..."></div>
+    <button type="submit" class="go">ค้นหา</button>
+  </div>
+  <div class="smarthint">⚡ ค้นอัจฉริยะ — เจอแม้พิมพ์คนละคำ + จับรหัสชิ้นส่วนได้
+    (ระบบผสม semantic+keyword ให้เอง ไม่ต้องเลือกโหมด)</div>
 </form>
 
 {% if results %}
-<div class="card">
-  <h2>ผลการค้นหา — เจอ {{ results|length }} เคส</h2>
-  <table>
-    <tr>
-      <th>case_id</th>
-      <th>เครื่อง</th>
-      <th>อาการ</th>
-      <th>วิธีแก้</th>
-      <th>คะแนนความใกล้</th>
-    </tr>
-    {% for r in results %}
-    <tr>
-      <td>{{ r.case_id }}</td>
-      <td>{{ r.machine }}</td>
-      <td>{{ r.symptom }}</td>
-      <td>{{ r.solution }}</td>
-      <td>{{ r.score }}</td>
-    </tr>
+<div class="tagfacet">
+  <div class="ttl">🏷️ การค้นนี้เกี่ยวกับ tag เหล่านี้ — <b>คลิกเพื่อกรองให้แคบลง</b></div>
+  <div class="ftags">
+    {% for tag, n in tag_facet %}
+    <span class="ftag {{ 'on' if loop.first }}">#{{ tag }} <span class="n">{{ n }}</span></span>
     {% endfor %}
-  </table>
-  <div class="hint">* คะแนนความใกล้ = ของจริงจะมาจาก FAISS (ยิ่งสูงยิ่งตรง)</div>
+  </div>
 </div>
+
+<div class="rescount">เจอ <b>{{ results|length }} เคส</b> · เรียงตามความใกล้เคียง</div>
+
+{% for r in results %}
+<div class="case">
+  <div class="thumb" style="background:{{ ['#5b8a9a','#7a6a8a','#8a7a5a'][loop.index0 % 3] }}">
+    รูป<br>{{ r.machine }}</div>
+  <div class="meta">
+    <div class="top"><span class="cid">{{ r.case_id }}</span>
+      <span class="score">ตรง {{ r.score }}%</span></div>
+    <div class="mname">{{ r.machine }} — {{ r.symptom }}</div>
+    <div class="sym">{{ r.symptom }} · แก้: {{ r.solution }}</div>
+    <div class="tagrow">
+      {% for tag in r.tags %}
+      <span class="t {{ 'hl' if loop.first }}">#{{ tag }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
 {% endif %}
 {% endblock %}

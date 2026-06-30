@@ -113,11 +113,26 @@ def search():
         # MOCK: ของจริงจะค้นจาก SQL (keyword) + FAISS (semantic)
         results = [
             {"case_id": "MTN-2026-0142", "machine": "Forming Press",
-             "symptom": "แรงดันไฮดรอลิกตกเป็นระยะ", "solution": "เปลี่ยนชุดซีล V-203 + ไล่ลม", "score": "0.91"},
+             "symptom": "แรงดันไฮดรอลิกตกเป็นระยะ เครื่องหยุดกลางรอบ",
+             "solution": "เปลี่ยนชุดซีล V-203 + ไล่ลม", "score": 91,
+             "tags": ["hydraulic", "pressure-drop", "cutting"]},
             {"case_id": "MTN-2026-0098", "machine": "Forming Press",
-             "symptom": "เครื่องหยุดกลางรอบ", "solution": "ตรวจวาล์ว + เติมน้ำมันไฮดรอลิก", "score": "0.74"},
+             "symptom": "ปั๊มไฮดรอลิกแรงดันไม่ขึ้น",
+             "solution": "ตรวจวาล์ว + เติมน้ำมันไฮดรอลิก", "score": 74,
+             "tags": ["hydraulic", "pump"]},
+            {"case_id": "MTN-2025-0331", "machine": "Press B",
+             "symptom": "น้ำมันซึมที่วาล์ว แรงดันค่อยๆ ลด",
+             "solution": "เปลี่ยนซีลวาล์ว", "score": 68,
+             "tags": ["hydraulic", "leak"]},
         ]
-    return render_template("search.html", active="search", q=q, results=results)
+    # MOCK: รวม tag จากผลลัพธ์เป็น facet (ของจริงจะ GROUP BY tag จาก SQL)
+    facet = {}
+    for r in results:
+        for t in r["tags"]:
+            facet[t] = facet.get(t, 0) + 1
+    tag_facet = sorted(facet.items(), key=lambda x: -x[1])
+    return render_template("search.html", active="search", q=q,
+                           results=results, tag_facet=tag_facet)
 
 
 @app.route("/dashboard", methods=["GET"])
