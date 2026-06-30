@@ -17,6 +17,39 @@ STT_BASE_URL = os.getenv("STT_BASE_URL", "").strip() # เช่น http://10.28
 STT_TIMEOUT = int(os.getenv("STT_TIMEOUT", "1800"))  # วินาที (คลิปยาวใช้เวลานาน)
 
 
+def _add_cuda_dll_dirs():
+    """ทำให้ ctranslate2 หา cuDNN/cuBLAS เจอบน Windows (จาก nvidia-*-cu12 ที่ pip ลง)
+
+    ctranslate2 โหลด cublas64_12.dll / cudnn64_9.dll แบบ lazy ตอน inference
+    การแค่ add_dll_directory ไม่พอ — ctranslate2 เรียก LoadLibrary แบบไม่ค้น dir นั้น
+    เลยเจอ 'cublas64_12.dll is not found' แล้วตกไป mock
+    ทางที่ได้ผลคือ preload DLL เข้า process ด้วย ctypes ก่อน
+    พอ ctranslate2 lazy-load ทีหลัง Windows จะคืนตัวที่โหลดไว้แล้วให้ -> เจอ"""
+    import glob, site, ctypes
+    sp_dirs = list(site.getsitepackages())
+    try:
+        sp_dirs.append(site.getusersitepackages())
+    except Exception:
+        pass
+    for sp in sp_dirs:
+        for bindir in glob.glob(os.path.join(sp, "nvidia", "*", "bin")):
+            if os.path.isdir(bindir):
+                try:
+                    os.add_dll_directory(bindir)
+                except Exception:
+                    pass
+                os.environ["PATH"] = bindir + os.pathsep + os.environ.get("PATH", "")
+    # preload DLL หลัก (dependency ในโฟลเดอร์เดียวกันจะตามมาเอง)
+    for dll in ("cublasLt64_12.dll", "cublas64_12.dll", "cudnn64_9.dll"):
+        try:
+            ctypes.CDLL(dll)
+        except Exception:
+            pass
+
+
+_add_cuda_dll_dirs()
+
+
 def transcribe_audio(path):
     """ถอดเสียง -> ข้อความ. ลอง server ก่อน (ถ้าตั้ง), ตกไป local, สุดท้าย mock"""
     if STT_BASE_URL:

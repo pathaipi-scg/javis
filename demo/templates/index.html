@@ -1,256 +1,143 @@
-<!DOCTYPE html>
-<html lang="th">
+{% extends "base.html" %}
+{% block title %}ป้อนข้อมูล — JARVIS{% endblock %}
 
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Meeting → Knowledge Base (Demo)</title>
-  <style>
-    :root {
-      --teal: #4a9d9c;
-      --bg: #f4f4f4;
-      --line: #ddd;
-    }
+{% block style %}
+  .req { color: #c0392b; }
+  .star { color: #e29317; }
+  .sechead { font-weight: 700; color: var(--teal); margin: 22px 0 2px; font-size: 15px; }
+  .ok { background: #eaf7ea; border: 1px solid #a8d8a8; color: #2c6e2c;
+        border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+  .ok a { color: #2c6e2c; font-weight: 600; }
+  select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px;
+           font-size: 14px; background: #fff; font-family: inherit; }
+  .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  details.more { margin-top: 18px; }
+  details.more summary { cursor: pointer; color: #667; font-size: 14px; font-weight: 600; }
+  details.more .inner { padding-top: 12px; }
+  .chips-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+  .chip { background: #eef4f4; color: #456; border: 1px solid #cdd9d9; border-radius: 20px;
+          padding: 6px 14px; font-size: 13px; cursor: pointer; font-family: inherit; margin: 0; }
+  .chip.on { background: var(--teal); color: #fff; border-color: var(--teal); }
+  .chip.on::before { content: "✓ "; }
+  .addtag { display: flex; gap: 8px; margin-top: 6px; }
+  .addtag input { flex: 1; }
+  .addtag .addbtn { margin: 0; padding: 8px 16px; font-size: 14px; background: #5a6a6a; }
+  @media (max-width: 640px) { .g3, .grid { grid-template-columns: 1fr; } }
+{% endblock %}
 
-    * {
-      box-sizing: border-box;
-    }
+{% block body %}
+<h1>📥 ป้อนข้อมูล</h1>
+<div class="flow">เสียง · รูป · <b>Tag + รายละเอียด</b> → cases/&lt;case_id&gt;.md → ค้น/ถามได้ทันที</div>
 
-    body {
-      font-family: "Segoe UI", Tahoma, sans-serif;
-      background: var(--bg);
-      margin: 0;
-      padding: 24px;
-      color: #222;
-    }
+{% if saved %}
+<div class="ok">บันทึกเคส <b>{{ saved.case_id }}</b> เรียบร้อย ({{ saved.written }})
+  — <a href="/search?q={{ saved.machine }}">ค้นดูเคสนี้</a></div>
+{% endif %}
 
-    .wrap {
-      max-width: 920px;
-      margin: 0 auto;
-    }
+<form class="card" action="/" method="post" enctype="multipart/form-data">
 
-    h1 {
-      font-size: 22px;
-    }
+  <label>เครื่อง <span class="req">*</span></label>
+  <input type="text" name="machine" required placeholder="Forming Press">
 
-    .card {
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 18px;
-    }
-
-    label {
-      font-weight: 600;
-      display: block;
-      margin: 12px 0 6px;
-    }
-
-    input[type=file],
-    textarea {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      font-size: 14px;
-    }
-
-    textarea {
-      min-height: 70px;
-      font-family: inherit;
-    }
-
-    .hint {
-      color: #888;
-      font-size: 12px;
-      margin-top: 4px;
-    }
-
-    button {
-      background: var(--teal);
-      color: #fff;
-      border: 0;
-      padding: 12px 28px;
-      border-radius: 8px;
-      font-size: 15px;
-      cursor: pointer;
-      margin-top: 16px;
-    }
-
-    button:hover {
-      opacity: .9;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 18px;
-    }
-
-    pre {
-      background: #1e1e1e;
-      color: #dcdcdc;
-      padding: 14px;
-      border-radius: 8px;
-      overflow-x: auto;
-      font-size: 13px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-    }
-
-    th,
-    td {
-      border: 1px solid var(--line);
-      padding: 8px 10px;
-      text-align: left;
-      font-size: 14px;
-    }
-
-    th {
-      background: #eef6f6;
-    }
-
-    .pill {
-      display: inline-block;
-      background: #eef6f6;
-      color: var(--teal);
-      padding: 2px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-    }
-
-    .flow {
-      text-align: center;
-      color: #666;
-      font-size: 13px;
-      margin: 6px 0 18px;
-    }
-
-    .nav {
-      background: #fff;
-      border-bottom: 1px solid var(--line);
-      padding: 0 24px;
-      display: flex;
-      gap: 4px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-
-    .nav a {
-      padding: 16px 18px;
-      text-decoration: none;
-      color: #555;
-      font-size: 14px;
-      border-bottom: 3px solid transparent;
-    }
-
-    .nav a:hover { color: var(--teal); }
-    .nav a.active { color: var(--teal); border-bottom-color: var(--teal); font-weight: 600; }
-  </style>
-</head>
-
-<body>
-  <nav class="nav">
-    <a href="/" class="active">📥 ป้อนข้อมูล</a>
-    <a href="/search">🔍 ค้นเคส</a>
-    <a href="/dashboard">📊 Dashboard</a>
-    <a href="/ask">🤖 ถาม JARVIS</a>
-  </nav>
-  <div class="wrap">
-    <h1>🛠️ Meeting → Knowledge Base <span class="pill">Demo</span></h1>
-    <div class="flow">เสียงประชุม + รูป(caption) → WhisperX → Qwen3-VL → ข้อมูลเครื่องจักร → .md (Obsidian)</div>
-
-    {% if save_status %}
-    <div class="card" style="border-color:var(--teal);background:#eef6f6;">{{ save_status }}</div>
-    {% endif %}
-
-    <form class="card" action="/process" method="post" enctype="multipart/form-data">
-      <label>① ไฟล์เสียงประชุม</label>
-      <input type="file" name="audio" accept="audio/*,video/*">
-      <div class="hint">.wav .mp3 .m4a .mp4 — ระบบถอดเป็นข้อความให้ (เว้นว่างได้)</div>
-
-      <label>② รูปภาพ (เช่น รูปมอเตอร์ที่เสีย)</label>
-      <input type="file" name="image" accept="image/*">
-
-      <label>คำอธิบายใต้รูป (caption)</label>
-      <textarea name="caption" placeholder="เช่น เครื่อง A มอเตอร์เสีย ที่ปั๊มน้ำ"></textarea>
-      <div class="hint">พิมพ์อธิบายว่ารูปคืออะไร เกิดอะไรขึ้น</div>
-
-      <button type="submit">▶ ประมวลผล</button>
-    </form>
-
-    {% if result %}
-    <div class="card">
-      <h2>📋 ผลลัพธ์</h2>
-
-      {% if result.timing %}
-      <div class="card" style="background:#eef6f6;border-color:var(--teal);margin-bottom:14px;padding:12px 16px;">
-        ⏱️ <b>เวลาประมวลผล:</b>
-        ถอดเสียง (STT) <b>{{ result.timing.stt }}s</b> ·
-        Qwen (สรุป) <b>{{ result.timing.llm }}s</b> ·
-        รวม <b>{{ result.timing.total }}s</b>
-        <div class="hint">เก็บไว้เทียบตอนได้ GPU — STT คือส่วนที่ GPU จะช่วยให้เร็วขึ้นมาก</div>
-      </div>
-      {% endif %}
-
-      <div class="grid">
-        <div>
-          <label>Transcript (จากเสียง)</label>
-          <pre>{{ result.transcript or "— ไม่ได้แนบไฟล์เสียง —" }}</pre>
-        </div>
-        <div>
-          <label>หมายเหตุจากรูป</label>
-          <pre>{{ result.image_note or "— ไม่ได้แนบรูป —" }}</pre>
-          {% if result.image_data_url %}
-          <img src="{{ result.image_data_url }}" alt="รูปที่แนบ"
-               style="margin-top:10px;max-width:100%;border-radius:8px;border:1px solid var(--line);">
-          {% endif %}
-        </div>
-      </div>
-
-      <label>เครื่องจักรที่ตรวจพบ (Qwen3)</label>
-      <p><b>สรุป:</b> {{ result.data.summary }}</p>
-      <p><b>🕒 บันทึกเมื่อ:</b> {{ result.datetime }}</p>
-      <table>
-        <tr>
-          <th>เครื่อง</th>
-          <th>อาการ</th>
-          <th>จุด</th>
-          <th>ซ่อมล่าสุด</th>
-          <th>action</th>
-        </tr>
-        {% for m in result.data.machines %}
-        <tr>
-          <td>{{ m.machine }}</td>
-          <td>{{ m.issue }}</td>
-          <td>{{ m.location }}</td>
-          <td>{{ m.repair_date }}</td>
-          <td>{{ m.action }}</td>
-        </tr>
-        {% endfor %}
-      </table>
-
-      <label>พรีวิวไฟล์ .md (จะเขียนลง Obsidian vault)</label>
-      <pre>{{ result.markdown }}</pre>
-
-      <form action="/save" method="post">
-        <input type="hidden" name="markdown" value="{{ result.markdown | e }}">
-        <input type="hidden" name="machines_json" value="{{ result.machines_json | e }}">
-        <input type="hidden" name="date" value="{{ result.date }}">
-        <input type="hidden" name="datetime" value="{{ result.datetime }}">
-        <input type="hidden" name="image_tmp" value="{{ result.image_tmp | e }}">
-        <input type="hidden" name="image_name" value="{{ result.image_name | e }}">
-        <button type="submit">💾 Save → เขียนลง vault</button>
-      </form>
-    </div>
-    {% endif %}
+  <label>Tags <span class="star">★ หัวใจของข้อมูล</span> <span class="req">*</span> (คลิกเลือกได้หลายอัน)</label>
+  <div id="tagchips" class="chips-wrap">
+    {% for t in tag_options or [] %}
+    <button type="button" class="chip" data-tag="{{ t }}" onclick="toggleTag(this)">#{{ t }}</button>
+    {% endfor %}
   </div>
-</body>
+  <div class="addtag">
+    <input type="text" id="newtag" placeholder="เพิ่มแท็กใหม่ที่ไม่มีในรายการ..."
+           onkeydown="if(event.key==='Enter'){event.preventDefault();addTag();}">
+    <button type="button" class="addbtn" onclick="addTag()">+ เพิ่ม</button>
+  </div>
+  <input type="hidden" name="tags" id="tagsfield">
+  <div class="hint">tag แรกที่เลือกจะกลายเป็น category ของ dashboard อัตโนมัติ</div>
 
-</html>
+  <label>อาการ / รายละเอียด <span class="req">*</span></label>
+  <textarea name="symptom" required placeholder="แรงดันไฮดรอลิกตกเป็นระยะ เครื่องหยุดกลางรอบ — หรือกดแนบไฟล์เสียงด้านล่าง ระบบจะถอดเติมให้"></textarea>
+
+  <label>วิธีแก้</label>
+  <textarea name="solution" placeholder="เปลี่ยนชุดซีล + ไล่ลมออกจากระบบ"></textarea>
+
+  <div class="sechead">แนบไฟล์ (ไม่บังคับ)</div>
+  <div class="grid">
+    <div><label>🎙️ ไฟล์เสียง</label>
+      <input type="file" name="audio" accept="audio/*,video/*">
+      <div class="hint">ถอดเป็นข้อความ → เติมต่อท้ายช่อง "อาการ" ให้</div></div>
+    <div><label>🖼️ รูป (แนบเฉยๆ ไม่วิเคราะห์)</label>
+      <input type="file" name="image" accept="image/*"></div>
+  </div>
+  <label>คำอธิบายใต้รูป (caption)</label>
+  <input type="text" name="caption" placeholder="จุดที่ซีลรั่ว">
+
+  <details class="more">
+    <summary>▸ กรอกเพิ่มเติม (ไม่บังคับ — ช่วยให้ dashboard/filter ละเอียดขึ้น)</summary>
+    <div class="inner">
+      <div class="g3">
+        <div><label>Plant</label><input type="text" name="plant" placeholder="CB"></div>
+        <div><label>Line</label><input type="text" name="line" placeholder="Line 2"></div>
+        <div><label>Component</label><input type="text" name="component" placeholder="Hydraulic valve V-203"></div>
+      </div>
+      <div class="g3">
+        <div><label>Severity</label>
+          <select name="severity">
+            <option value="low">low</option>
+            <option value="medium" selected>medium</option>
+            <option value="high">high</option>
+          </select></div>
+        <div><label>Status</label>
+          <select name="status">
+            <option value="open">open</option>
+            <option value="resolved" selected>resolved</option>
+          </select></div>
+        <div><label>Downtime (นาที)</label><input type="text" name="downtime_min" placeholder="45"></div>
+      </div>
+      <div class="grid">
+        <div><label>อะไหล่ที่ใช้</label><input type="text" name="parts_used" placeholder="seal kit x1"></div>
+        <div><label>สาเหตุ (root cause)</label><input type="text" name="cause" placeholder="ซีลวาล์วเสื่อม"></div>
+      </div>
+      <div class="grid">
+        <div><label>ผลลัพธ์</label><input type="text" name="result" placeholder="แรงดันคงที่"></div>
+        <div><label>source</label>
+          <select name="source">
+            <option value="morning_meeting" selected>morning_meeting</option>
+            <option value="หน้างาน">หน้างาน</option>
+            <option value="อื่นๆ">อื่นๆ</option>
+          </select></div>
+      </div>
+    </div>
+  </details>
+
+  <button type="submit" onclick="return checkTags()">บันทึกเคส</button>
+</form>
+
+<script>
+  const selected = [];   // เรียงตามลำดับคลิก (tag แรก = category)
+  function syncTags() { document.getElementById('tagsfield').value = selected.join(' '); }
+  function toggleTag(btn) {
+    const t = btn.dataset.tag;
+    const i = selected.indexOf(t);
+    if (i >= 0) { selected.splice(i, 1); btn.classList.remove('on'); }
+    else { selected.push(t); btn.classList.add('on'); }
+    syncTags();
+  }
+  function addTag() {
+    const inp = document.getElementById('newtag');
+    const t = inp.value.trim().replace(/^#+/, '').replace(/\s+/g, '-').toLowerCase();
+    if (!t) return;
+    let btn = document.querySelector('#tagchips .chip[data-tag="' + t + '"]');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'chip'; btn.dataset.tag = t;
+      btn.textContent = '#' + t; btn.onclick = function () { toggleTag(this); };
+      document.getElementById('tagchips').appendChild(btn);
+    }
+    if (selected.indexOf(t) < 0) toggleTag(btn);
+    inp.value = '';
+  }
+  function checkTags() {
+    if (selected.length === 0) { alert('เลือกอย่างน้อย 1 tag ก่อนบันทึก'); return false; }
+    return true;
+  }
+</script>
+{% endblock %}

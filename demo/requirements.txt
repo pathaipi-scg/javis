@@ -10,5 +10,16 @@ python-dotenv==1.2.2
 # ส่งไฟล์เสียงไปถอดที่ STT service บน server (โหมด remote)
 requests>=2.31
 
-# ถอดเสียง (option — ไม่ลงก็ได้ จะใช้ mock transcript)
+# ─────────────────────────────────────────────────────────────
+# ถอดเสียงในเครื่อง (option — ไม่ลงก็ได้ จะตกไป mock/remote)
+# ลงเมื่อต้องการถอดเสียงด้วย faster-whisper บนเครื่องนี้:
+#     pip install faster-whisper==1.2.1
+# (จะดึง ctranslate2 / av / tokenizers / onnxruntime มาเองอัตโนมัติ)
 # faster-whisper==1.2.1
+
+# ── ใช้ GPU (CUDA) ถอดเสียง — เฉพาะเครื่องที่มี NVIDIA GPU ──
+# บน Windows ctranslate2 ไม่ได้ดึง CUDA runtime มาให้ ต้องลงเอง
+# แล้ว transcribe.py (_add_cuda_dll_dirs) จะดัน path เข้า PATH ตอนรัน
+#     pip install nvidia-cublas-cu12==12.9.2.10 nvidia-cudnn-cu12==9.23.2.1
+# nvidia-cublas-cu12==12.9.2.10
+# nvidia-cudnn-cu12==9.23.2.1

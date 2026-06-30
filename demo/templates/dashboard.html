@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block body %}
-<h1>📊 Dashboard <span class="mock">MOCK — ยังไม่ต่อ SQL จริง</span></h1>
+<h1>📊 Dashboard {% if mock %}<span class="mock">MOCK — vault ว่าง</span>{% endif %}</h1>
 <div class="flow">ของจริงดึงจาก SQL: COUNT เคส, SUM downtime, GROUP BY category</div>
 
 <div class="stats">

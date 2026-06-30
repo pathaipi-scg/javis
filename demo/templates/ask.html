@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block body %}
-<h1>🤖 ถาม JARVIS <span class="mock">MOCK — ยังไม่ต่อ RAG จริง</span></h1>
+<h1>🤖 ถาม JARVIS {% if mock %}<span class="mock">MOCK — vault ว่าง/ต่อ RAG ไม่ติด</span>{% endif %}</h1>
 <div class="flow">ถาม (พิมพ์/พูด) → ค้นเคสที่เกี่ยว → Qwen สรุปคำตอบ + อ้างอิง case_id → อ่านเป็นเสียง (TTS)</div>
 
 <form class="card" action="/ask" method="post">
