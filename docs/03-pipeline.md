@@ -22,8 +22,8 @@
             ↓
 ⑦  เก็บ MSSQL (Meeting.raw_text + Full-Text index)
             ↓
-⑧  Qwen3 (server ภายใน) → JSON
-    รวม transcript + caption รูป เป็น context เดียว ป้อน Qwen3
+⑧  Typhoon2 8B (server ภายใน) → JSON
+    รวม transcript + caption รูป เป็น context เดียว ป้อน Typhoon
     {summary, machines:[{machine, issue, location, repair_date, action}]}
             ↓
 ⑨  เก็บ MachineEvent (structured) ลง MSSQL

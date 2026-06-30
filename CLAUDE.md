@@ -13,7 +13,7 @@ Do not assume the Django/MSSQL stack exists in code — it is the future target 
 
 ## Pipeline (what the demo does)
 
-Audio + image(+caption) → transcript (faster-whisper) + caption merged into one context → Qwen3 extracts machine-maintenance data as JSON → render Markdown preview → on Save, write to an Obsidian vault.
+Audio + image(+caption) → transcript (faster-whisper) + caption merged into one context → an LLM (currently **Typhoon2 8B**, a Thai-tuned Llama 3.1) extracts machine-maintenance data as JSON → render Markdown preview → on Save, write to an Obsidian vault.
 
 `demo/app.py` wires it: `/process` runs transcribe → extract → render; `/save` writes to vault. Three modules behind it:
 - `transcribe.py` — `transcribe_audio(path)` via faster-whisper (Thai, VAD).
@@ -22,7 +22,7 @@ Audio + image(+caption) → transcript (faster-whisper) + caption merged into on
 
 ## Graceful-degradation design (important)
 
-`transcribe.py` and `llm.py` are built to **run without their backends**. If `faster-whisper` isn't installed, or the Qwen3 server is unreachable, each `except` returns **mock data** so the UI demos end to end. This is intentional — so a `[MOCK — ...]` prefix in output means the real backend was never reached, **not** that the code is broken. Check `.env` / server reachability before "fixing" mock output.
+`transcribe.py` and `llm.py` are built to **run without their backends**. If `faster-whisper` isn't installed, or the LLM server (Typhoon) is unreachable, each `except` returns **mock data** so the UI demos end to end. This is intentional — so a `[MOCK — ...]` prefix in output means the real backend was never reached, **not** that the code is broken. Check `.env` / server reachability before "fixing" mock output.
 
 ## Running
 
@@ -41,9 +41,11 @@ No test suite, linter, or build step exists. Verify changes by running `app.py` 
 
 All backends are configured via env (loaded by `python-dotenv`); `llm.py` header constants are the fallbacks.
 
-- `QWEN_BASE_URL` — **must be the internal server's real IP**, not `127.0.0.1` (the model runs on a separate machine). OpenAI-compatible base; the URL is auto-normalized to end in `/v1`. Ollama `:11434/v1`, vLLM `:8000/v1`, AnythingLLM `:3001/api/v1/openai`.
-- `QWEN_MODEL` — e.g. `qwen3-vl:4b` (Ollama) or `Qwen/Qwen3-VL-4B-Instruct` (vLLM).
-- `QWEN_VISION=1` — send the image into the LLM directly (only for VL models).
+> **Naming note:** the `QWEN_*` env vars are historical. The project started on **Qwen3-VL** but pivoted to **Typhoon2 8B** (a Thai-tuned Llama 3.1) for stronger Thai once image analysis was dropped. The vars still drive the OpenAI-compatible client regardless of which model/vendor is behind them — they were not renamed to avoid touching code.
+
+- `QWEN_BASE_URL` — OpenAI-compatible base. Point it at wherever the model is served: `127.0.0.1:11434/v1` if Ollama runs on the **same** machine, or the server's **real IP** if it runs on a separate box (never `127.0.0.1` in that case). URL is auto-normalized to end in `/v1`. Ollama `:11434/v1`, vLLM `:8000/v1`, AnythingLLM `:3001/api/v1/openai`.
+- `QWEN_MODEL` — the served model. **Currently `scb10x/llama3.1-typhoon2-8b-instruct`** (Typhoon2 8B). Was `qwen3-vl:4b` before the pivot.
+- `QWEN_VISION` — `1` sends the image into the LLM directly (only for VL models). **Currently `0`** — Typhoon is text-only, so the image is *not* analyzed; only its caption text feeds the context. Set back to `1` only with a VL model.
 - `QWEN_API_KEY` — usually `not-needed` for local servers.
 - `WHISPER_MODEL` / `WHISPER_DEVICE` — `cuda` if a GPU is available, else `cpu` (slow).
 - `VAULT_PATH` — existing Obsidian vault root; `meetings/` and `machines/` subfolders are created under it.

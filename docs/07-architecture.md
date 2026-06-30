@@ -6,7 +6,7 @@ Teams / มือถือ / อัดจอ  ──ไฟล์──▶  inbox
                                               │
                   ┌───────────────────────────┼──────────────────┐
                   ▼            ▼               ▼                  ▼
-               ffmpeg → WhisperX        Qwen3 (server)       MSSQL (ORM)
+               ffmpeg → WhisperX       Typhoon (server)      MSSQL (ORM)
               (เสียง→ข้อความ+คน)        (ดึง JSON)          (source of truth)
                                                                   │
                                                                   ▼
@@ -19,7 +19,7 @@ Teams / มือถือ / อัดจอ  ──ไฟล์──▶  inbox
 
 ## Flow ย่อ (infographic แนวนอน)
 ```
-เสียง+รูป 🎙️🖼️ → WhisperX → MSSQL 🗄️ → Qwen3 🤖 → .md 📄 → Obsidian 🔍
+เสียง+รูป 🎙️🖼️ → WhisperX → MSSQL 🗄️ → Typhoon 🤖 → .md 📄 → Obsidian 🔍
 ```
 
 ## จุดเด่น
