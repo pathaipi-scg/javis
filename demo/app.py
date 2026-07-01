@@ -15,13 +15,21 @@ from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
-import os, tempfile, re, time, shutil
+import os, sys, tempfile, re, time, shutil
 
 from transcribe import transcribe_audio, WHISPER_MODEL, WHISPER_DEVICE, STT_BASE_URL
-import rag, llm
+import rag, llm, tts
+
+# บน Windows stdout ของ uvicorn เป็น cp1252 -> print ภาษาไทยใน except (log) จะ crash เอง
+# แล้วทำให้ graceful-degradation (คืน None/mock) กลายเป็น HTTP 500 แทน -> ตั้ง utf-8 กันไว้
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -184,6 +192,16 @@ async def ask(request: Request):
     return templates.TemplateResponse(request, "ask.html",
                                       {"active": "ask", "q": q, "answer": answer, "mock": used_mock,
                                        "plant": plant, "plants": rag.all_plants()})
+
+
+@app.post("/tts")
+async def tts_endpoint(request: Request):
+    """อ่านคำตอบเป็นเสียง JARVIS (mp3). ถ้า edge-tts ใช้ไม่ได้ -> 503 ให้ฝั่งเว็บ fallback"""
+    f = await request.form()
+    audio = await tts.synthesize(f.get("text", ""))
+    if audio is None:
+        return Response(status_code=503)
+    return Response(content=audio, media_type="audio/mpeg")
 
 
 @app.api_route("/stt", methods=["GET", "POST"], response_class=HTMLResponse)

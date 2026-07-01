@@ -11,7 +11,7 @@ select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radiu
 
 {% block body %}
 <h1>🤖 ถาม JARVIS {% if mock %}<span class="mock">MOCK — vault ว่าง/ต่อ RAG ไม่ติด</span>{% endif %}</h1>
-<div class="flow">ถาม (พิมพ์/พูด) → ค้นเคสที่เกี่ยว → Typhoon สรุปคำตอบ + อ้างอิง case_id → อ่านเป็นเสียง (TTS)</div>
+<div class="flow">ถาม (พิมพ์/พูด) → ค้นเคสที่เกี่ยว → Typhoon สรุปคำตอบ + อ้างอิง case_id → อ่านเป็นเสียง JARVIS (TTS)</div>
 
 <form class="card" action="/ask" method="post">
   <label>โรงงาน (ตอบจากเคสในโรงงานนี้เท่านั้น)</label>
@@ -31,7 +31,7 @@ select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radiu
 <div class="card">
   <h2>คำตอบ</h2>
   <div class="answer">
-    <p>{{ answer.text }}</p>
+    <p id="ansText">{{ answer.text }}</p>
     <div class="cite">
       📎 อ้างอิงจากเคส:
       {% for c in answer.citations %}
@@ -39,8 +39,40 @@ select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radiu
       {% endfor %}
     </div>
   </div>
-  <button type="button" onclick="alert('ของจริงจะเล่นเสียงไทยด้วย edge-tts (TTS)')">🔊 ฟังคำตอบ</button>
-  <div class="hint">* ปุ่มฟังยังเป็น mock — ของจริงต่อ TTS แปลงคำตอบเป็นเสียงไทย</div>
+  <button type="button" id="ttsBtn" onclick="speak()">🔊 ฟังคำตอบ (เสียง JARVIS)</button>
+  <audio id="ttsPlayer" style="display:none"></audio>
+  <div class="hint" id="ttsHint">เสียงไทยจาก edge-tts — ถ้าเซิร์ฟเวอร์ต่อ TTS ไม่ได้ จะใช้เสียงของเบราว์เซอร์แทนอัตโนมัติ</div>
 </div>
 {% endif %}
+
+<script>
+async function speak() {
+  const btn = document.getElementById('ttsBtn');
+  const hint = document.getElementById('ttsHint');
+  const text = (document.getElementById('ansText') || {}).textContent;
+  if (!text || !text.trim()) return;
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = '⏳ กำลังสร้างเสียง...';
+  try {
+    const fd = new FormData();
+    fd.append('text', text.trim());
+    const res = await fetch('/tts', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error('tts-unavailable');   // 503 -> ตก fallback
+    const player = document.getElementById('ttsPlayer');
+    player.src = URL.createObjectURL(await res.blob());
+    await player.play();
+  } catch (e) {
+    // fallback: เสียงสังเคราะห์ของเบราว์เซอร์ (ไม่ต้องพึ่ง server/เน็ต)
+    hint.textContent = '⚠️ เซิร์ฟเวอร์ TTS ไม่พร้อม — ใช้เสียงเบราว์เซอร์แทน';
+    const u = new SpeechSynthesisUtterance(text.trim());
+    u.lang = 'th-TH';
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+</script>
 {% endblock %}

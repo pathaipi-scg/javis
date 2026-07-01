@@ -279,12 +279,14 @@ def answer(query, k=4, plant=None):
         from llm import QWEN_MODEL
         client = _get_client()
         ctx = "\n".join(
-            f"[{h['case_id']}] เครื่อง {h['machine']} อาการ: {h['symptom']} "
+            f"[{h['case_id']}] โรงงาน: {h.get('plant') or '-'} ฝ่าย: {h.get('department') or '-'} "
+            f"เครื่อง {h['machine']} อาการ: {h['symptom']} "
             f"จุด: {h['component']} วิธีแก้: {h['solution']}"
             for h in hits
         )
         prompt = (
             "คุณคือผู้ช่วยช่างซ่อมบำรุง ตอบคำถามจากเคสที่ให้มาเท่านั้น สั้นกระชับเป็นภาษาไทย "
+            "แต่ละเคสระบุโรงงาน/ฝ่ายไว้ ถ้าคำถามเจาะจงโรงงานใด ให้นับ/ตอบเฉพาะเคสของโรงงานนั้น "
             "ถ้าข้อมูลไม่พอให้บอกว่าไม่พบเคสที่ตรง\n\n"
             f"เคสที่เกี่ยวข้อง:\n{ctx}\n\nคำถาม: {query}\n\nคำตอบ:"
         )
