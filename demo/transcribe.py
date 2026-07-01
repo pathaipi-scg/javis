@@ -89,9 +89,18 @@ def _transcribe_local(path):
             out.append(f"[{s.start:05.1f}s] {s.text.strip()}")
         return "\n".join(out) if out else "(ไม่พบเสียงพูด)"
 
+    except ModuleNotFoundError as e:
+        reason = f"ยังไม่ได้ลง faster-whisper: {e.name}"
+        return _mock_transcript(reason)
     except Exception as e:
-        return (
-            f"[MOCK — ยังไม่ได้ลง faster-whisper: {type(e).__name__}]\n"
-            "[00:31s] เครื่อง A มอเตอร์ปั๊มน้ำไหม้เมื่อเช้า\n"
-            "[00:38s] ซ่อมล่าสุดไป 20 มิถุนา เปลี่ยนมอเตอร์ใหม่"
-        )
+        # ลงแล้วแต่ถอดไม่สำเร็จ (ไฟล์เสีย / CUDA หาย / โมเดลโหลดไม่ได้ ฯลฯ)
+        reason = f"ถอดเสียงล้มเหลว: {type(e).__name__}: {e}"
+        return _mock_transcript(reason)
+
+
+def _mock_transcript(reason):
+    return (
+        f"[MOCK — {reason}]\n"
+        "[00:31s] เครื่อง A มอเตอร์ปั๊มน้ำไหม้เมื่อเช้า\n"
+        "[00:38s] ซ่อมล่าสุดไป 20 มิถุนา เปลี่ยนมอเตอร์ใหม่"
+    )

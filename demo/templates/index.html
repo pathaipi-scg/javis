@@ -27,7 +27,7 @@
 
 {% block body %}
 <h1>📥 ป้อนข้อมูล</h1>
-<div class="flow">เสียง · รูป · <b>Tag + รายละเอียด</b> → cases/&lt;case_id&gt;.md → ค้น/ถามได้ทันที</div>
+<div class="flow">เสียง · รูป · <b>Tag + รายละเอียด</b> → cases/&lt;plant&gt;/&lt;department&gt;/&lt;case_id&gt;.md → ค้น/ถามได้ทันที</div>
 
 {% if saved %}
 <div class="ok">บันทึกเคส <b>{{ saved.case_id }}</b> เรียบร้อย ({{ saved.written }})
@@ -38,6 +38,30 @@
 
   <label>เครื่อง <span class="req">*</span></label>
   <input type="text" name="machine" required placeholder="Forming Press">
+
+  <div class="grid">
+    <div>
+      <label>โรงงาน (Plant) <span class="req">*</span></label>
+      <select name="plant" id="plantSel" required onchange="toggleNew('plant')">
+        <option value="" disabled selected>— เลือกโรงงาน —</option>
+        {% for p in plant_options or [] %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        <option value="__new__">➕ เพิ่มโรงงานใหม่…</option>
+      </select>
+      <input type="text" name="plant_new" id="plantNew" style="display:none; margin-top:8px"
+             placeholder="พิมพ์ชื่อโรงงานใหม่" autocomplete="off">
+    </div>
+    <div>
+      <label>ฝ่าย (Department) <span class="req">*</span></label>
+      <select name="department" id="deptSel" required onchange="toggleNew('dept')">
+        <option value="" disabled selected>— เลือกฝ่าย —</option>
+        {% for d in dept_options or [] %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+        <option value="__new__">➕ เพิ่มฝ่ายใหม่…</option>
+      </select>
+      <input type="text" name="department_new" id="deptNew" style="display:none; margin-top:8px"
+             placeholder="พิมพ์ชื่อฝ่ายใหม่" autocomplete="off">
+    </div>
+  </div>
+  <div class="hint">📁 ที่เก็บไฟล์: <code>cases/&lt;plant&gt;/&lt;department&gt;/&lt;case_id&gt;.md</code> — เลือกจากที่มี หรือกด "เพิ่มใหม่"</div>
 
   <label>Tags <span class="star">★ หัวใจของข้อมูล</span> <span class="req">*</span> (คลิกเลือกได้หลายอัน)</label>
   <div id="tagchips" class="chips-wrap">
@@ -73,8 +97,7 @@
   <details class="more">
     <summary>▸ กรอกเพิ่มเติม (ไม่บังคับ — ช่วยให้ dashboard/filter ละเอียดขึ้น)</summary>
     <div class="inner">
-      <div class="g3">
-        <div><label>Plant</label><input type="text" name="plant" placeholder="CB"></div>
+      <div class="grid">
         <div><label>Line</label><input type="text" name="line" placeholder="Line 2"></div>
         <div><label>Component</label><input type="text" name="component" placeholder="Hydraulic valve V-203"></div>
       </div>
@@ -112,6 +135,16 @@
 </form>
 
 <script>
+  // dropdown โรงงาน/ฝ่าย: เลือก "เพิ่มใหม่" -> โชว์ช่องพิมพ์ + บังคับกรอก
+  function toggleNew(which) {
+    const sel = document.getElementById(which === 'plant' ? 'plantSel' : 'deptSel');
+    const inp = document.getElementById(which === 'plant' ? 'plantNew' : 'deptNew');
+    const isNew = sel.value === '__new__';
+    inp.style.display = isNew ? 'block' : 'none';
+    inp.required = isNew;
+    if (isNew) inp.focus();
+  }
+
   const selected = [];   // เรียงตามลำดับคลิก (tag แรก = category)
   function syncTags() { document.getElementById('tagsfield').value = selected.join(' '); }
   function toggleTag(btn) {

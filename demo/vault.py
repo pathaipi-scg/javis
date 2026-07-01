@@ -91,10 +91,30 @@ def save_to_vault(markdown, machines, date, when=None, image_src=None, image_nam
 # (ผู้ใช้กรอก field เอง — แม่นกว่าให้ AI สกัด)
 # ─────────────────────────────────────────────────────────────
 
-def _next_case_id(cases_dir, year):
-    """รหัสเคสถัดไป MTN-<ปี>-<NNNN> (4 หลัก) ไม่ชนของเดิม"""
+def _safe(name):
+    """แปลงเป็นชื่อโฟลเดอร์ที่ปลอดภัย (กันอักขระต้องห้ามบน Windows/Obsidian)
+    ว่าง -> _unsorted เพื่อไม่ให้เคสหล่นหาย"""
+    name = (name or "").strip()
+    name = re.sub(r'[<>:"/\\|?*]', "_", name)   # อักขระที่ Windows ห้ามใช้ในชื่อไฟล์
+    name = name.strip(". ")                       # กันจุด/ช่องว่างท้ายชื่อ (Windows ตัดทิ้ง)
+    return name or "_unsorted"
+
+
+def _existing_or(parent, name):
+    """ถ้ามีโฟลเดอร์ชื่อตรงกันอยู่แล้ว (ไม่สนพิมพ์เล็ก/ใหญ่) ใช้ตัวเดิม
+    กันเคสเดียวกันแตกเป็นสองโฟลเดอร์ เช่น production / Production"""
+    if parent.exists():
+        for d in parent.iterdir():
+            if d.is_dir() and d.name.casefold() == name.casefold():
+                return d
+    return parent / name
+
+
+def _next_case_id(cases_root, year):
+    """รหัสเคสถัดไป MTN-<ปี>-<NNNN> (4 หลัก) ไม่ชนของเดิม
+    สแกนทุกชั้นย่อย (rglob) เพราะเคสกระจายอยู่ใน cases/<plant>/<dept>/"""
     n = 0
-    for f in cases_dir.glob(f"MTN-{year}-*.md"):
+    for f in cases_root.rglob(f"MTN-{year}-*.md"):
         m = re.search(rf"MTN-{year}-(\d+)", f.stem)
         if m:
             n = max(n, int(m.group(1)))
@@ -113,11 +133,15 @@ def save_case(fields, image_src=None, image_name=None):
     if not vault.exists():
         return f"⚠️ ไม่พบ vault: {VAULT_PATH} — ตรวจ path ใน .env", None
 
-    cases_dir = vault / "cases"
-    cases_dir.mkdir(exist_ok=True)
+    # โครงชั้น: cases/<โรงงาน>/<ฝ่าย>/<case_id>.md  (เช่น cases/A/production/MTN-2026-0001.md)
+    cases_root = vault / "cases"
+    plant_dir = _existing_or(cases_root, _safe(fields.get("plant")))
+    case_dir = _existing_or(plant_dir, _safe(fields.get("department")))
+    case_dir.mkdir(parents=True, exist_ok=True)
+    plant, dept = plant_dir.name, case_dir.name   # ชื่อโฟลเดอร์จริงที่ใช้ (อาจเป็นตัวเดิมที่มีอยู่)
     now = _dt.datetime.now()
     today = now.strftime("%Y-%m-%d")
-    case_id = _next_case_id(cases_dir, now.year)
+    case_id = _next_case_id(cases_root, now.year)   # นับข้ามทุกชั้นให้เลขไม่ชน
     tags = fields.get("tags") or []
 
     lines = [
@@ -125,7 +149,8 @@ def save_case(fields, image_src=None, image_name=None):
         f"case_id: {case_id}",
         f"date: {today}",
         f"source: {fields.get('source', '')}",
-        f"plant: {fields.get('plant', '')}",
+        f"plant: {plant}",
+        f"department: {dept}",
         f"line: {fields.get('line', '')}",
         f"machine: {fields.get('machine', '')}",
         f"component: {fields.get('component', '')}",
@@ -155,9 +180,9 @@ def save_case(fields, image_src=None, image_name=None):
         if cap:
             lines.append(f"> {cap}")
 
-    cfile = cases_dir / f"{case_id}.md"
+    cfile = case_dir / f"{case_id}.md"
     cfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    written = [f"cases/{case_id}.md"]
+    written = [f"cases/{plant}/{dept}/{case_id}.md"]
 
     if image_src and image_name and Path(image_src).exists():
         att = vault / "attachments"

@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Two layers, different maturity:
 
 - **`docs/`** — design docs (in Thai) for the *full planned system*: a meeting → knowledge-base pipeline on **Django + MSSQL + WhisperX + Django-Q2**. This system is **not built yet** — docs are the spec/blueprint (also feed Canva slides). Read `docs/README.md` first for the index.
-- **`demo/`** — a **working Flask prototype** that implements a slimmed-down slice of the pipeline end to end. This is the only runnable code. When asked to "run the app" or change behavior, this is almost always the target.
+- **`demo/`** — a **working FastAPI prototype** (server-renders the existing Jinja2 pages) that implements a slimmed-down slice of the pipeline end to end. This is the only runnable code. When asked to "run the app" or change behavior, this is almost always the target. A Vue SPA frontend is planned but not built yet — routes still return HTML, not JSON.
 
-Do not assume the Django/MSSQL stack exists in code — it is the future target described in `docs/`, while `demo/` is the present reality (Flask, no DB, files written straight to an Obsidian vault).
+Do not assume the Django/MSSQL stack exists in code — it is the future target described in `docs/`, while `demo/` is the present reality (FastAPI + Jinja2, no DB, files written straight to an Obsidian vault).
 
 ## Pipeline (what the demo does)
 

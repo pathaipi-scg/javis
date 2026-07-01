@@ -121,11 +121,14 @@ def _parse_case_file(path):
     machine   = fm.get("machine", "?")
     component = fm.get("component", "")
     category  = fm.get("category", "")
+    plant      = fm.get("plant", "")
+    department = fm.get("department", "")
     try:
         downtime = int(re.sub(r"\D", "", fm.get("downtime_min", "0")) or 0)
     except Exception:
         downtime = 0
-    blob = (f"เครื่อง {machine} {component} หมวด {category} อาการ {symptom} "
+    blob = (f"เครื่อง {machine} {component} โรงงาน {plant} ฝ่าย {department} "
+            f"หมวด {category} อาการ {symptom} "
             f"สาเหตุ {cause} วิธีแก้ {solution} {' '.join(tags)}")
     return {
         "case_id":  fm.get("case_id", path.stem),
@@ -133,6 +136,8 @@ def _parse_case_file(path):
         "symptom":  symptom or "(ไม่ระบุอาการ)",
         "solution": solution or "(ไม่ระบุวิธีแก้)",
         "component": component or "-",
+        "plant": plant,
+        "department": department,
         "repair_date": fm.get("date", ""),
         "category": category,
         "severity": fm.get("severity", ""),
@@ -151,7 +156,8 @@ def load_cases():
     if not cdir.exists():
         return []
     cases = []
-    for f in sorted(cdir.glob("MTN-*.md")):
+    # rglob = อ่านลึกทุกชั้น cases/<plant>/<dept>/... (ไม่งั้นเคสในโฟลเดอร์ย่อยจะค้นไม่เจอ)
+    for f in sorted(cdir.rglob("MTN-*.md")):
         try:
             cases.append(_parse_case_file(f))
         except Exception:
@@ -209,12 +215,42 @@ def _ensure_index():
 
 
 # ---------- API ที่ app.py เรียก ----------
-def search(query, k=8):
-    """ค้นเคสด้วย semantic similarity. คืน list[case] (มี score%) หรือ None ถ้าทำไม่ได้"""
+def all_plants():
+    """รายชื่อโรงงานที่มีเคสจริง (ไว้ทำ dropdown กรอง) — ไม่รวมค่าว่าง/_unsorted"""
+    plants = set()
+    for c in load_cases():
+        p = (c.get("plant") or "").strip()
+        if p and p != "_unsorted":
+            plants.add(p)
+    return sorted(plants)
+
+
+def all_departments():
+    """รายชื่อฝ่ายที่เคยใช้ (ไว้ทำ datalist แนะนำในฟอร์ม) — กันพิมพ์ชื่อฝ่ายซ้ำ/เพี้ยน"""
+    depts = set()
+    for c in load_cases():
+        d = (c.get("department") or "").strip()
+        if d and d != "_unsorted":
+            depts.add(d)
+    return sorted(depts)
+
+
+def search(query, k=8, plant=None):
+    """ค้นเคสด้วย semantic similarity. คืน list[case] (มี score%) หรือ None ถ้าทำไม่ได้
+    plant: ถ้าระบุ -> กรองเฉพาะเคสของโรงงานนั้น (isolation ไม่ให้ดึงข้ามโรงงาน)
+           คืน [] (ไม่ใช่ None) ถ้าโรงงานนั้นยังไม่มีเคส -> จะไม่ตกไปโรงอื่น/mock"""
     try:
         cases, vecs = _ensure_index()
         if not cases:
             return None
+        if plant:
+            pf = plant.strip().casefold()
+            keep = [(c, v) for c, v in zip(cases, vecs)
+                    if (c.get("plant") or "").strip().casefold() == pf]
+            if not keep:
+                return []
+            cases = [c for c, _ in keep]
+            vecs = [v for _, v in keep]
         qv = _embed([query])[0]
         scored = []
         for c, v in zip(cases, vecs):
@@ -229,12 +265,17 @@ def search(query, k=8):
         return None
 
 
-def answer(query, k=4):
-    """RAG: ดึงเคสที่เกี่ยว -> Typhoon สรุป. คืน {text, citations} หรือ None"""
+def answer(query, k=4, plant=None):
+    """RAG: ดึงเคสที่เกี่ยว -> Typhoon สรุป. คืน {text, citations} หรือ None
+    plant: จำกัดขอบเขตให้ตอบจากเคสในโรงงานนั้นเท่านั้น"""
     try:
-        hits = search(query, k=k)
+        hits = search(query, k=k, plant=plant)
+        if hits is None:
+            return None                     # vault ว่าง/backend มีปัญหา -> ให้ app ตก mock
         if not hits:
-            return None
+            # โรงงานนี้ไม่มีเคสที่เกี่ยว -> ตอบชัดว่าไม่พบ (ไม่ดึงข้ามโรงงาน ไม่ mock)
+            where = f"โรงงาน {plant}" if plant else "ระบบ"
+            return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": []}
         from llm import QWEN_MODEL
         client = _get_client()
         ctx = "\n".join(
