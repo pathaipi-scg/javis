@@ -328,3 +328,12 @@ def save_case_and_reindex(fields, image_path=None, image_name=None):
     if case_id:
         _CACHE.update(key=None, cases=None, vecs=None)
     return status, case_id
+
+
+def save_markdown_and_reindex(md, image_path=None, image_name=None):
+    """เซฟเนื้อ .md ที่ผ่านหน้าพรีวิว (อาจถูกแก้) ผ่าน vault.save_markdown แล้วล้าง cache"""
+    import vault
+    status, case_id = vault.save_markdown(md, image_src=image_path, image_name=image_name)
+    if case_id:
+        _CACHE.update(key=None, cases=None, vecs=None)
+    return status, case_id

@@ -21,7 +21,7 @@ from starlette.concurrency import run_in_threadpool
 import os, sys, tempfile, re, time, shutil
 
 from transcribe import transcribe_audio, WHISPER_MODEL, WHISPER_DEVICE, STT_BASE_URL
-import rag, llm, tts
+import rag, llm, tts, vault
 
 # บน Windows stdout ของ uvicorn เป็น cp1252 -> print ภาษาไทยใน except (log) จะ crash เอง
 # แล้วทำให้ graceful-degradation (คืน None/mock) กลายเป็น HTTP 500 แทน -> ตั้ง utf-8 กันไว้
@@ -44,15 +44,30 @@ def _save_upload(upload) -> str:
     return path
 
 
+# ช่องในฟอร์มที่ prefill กลับได้ (ตอนกด "ยกเลิก/กลับไปแก้" จากหน้าพรีวิว)
+_FORM_FIELDS = ("machine", "plant", "department", "line", "component", "severity",
+                "status", "downtime_min", "parts_used", "source",
+                "tags", "symptom", "solution", "cause", "result", "caption")
+
+
+def _form_ctx(saved=None, vals=None):
+    """context ของหน้าฟอร์ม index.html (ตัวเลือก dropdown/tag + ค่า prefill)"""
+    return {"active": "capture", "saved": saved, "result": None,
+            "tag_options": rag.all_tags(), "plant_options": rag.all_plants(),
+            "dept_options": rag.all_departments(), "vals": vals or {}}
+
+
 @app.api_route("/", methods=["GET", "POST"], response_class=HTMLResponse)
 async def index(request: Request):
-    """หน้าป้อนข้อมูล = ฟอร์มเพิ่มเคส (tag-first). POST = บันทึกเคสตามสเปก"""
-    saved = None
+    """หน้าป้อนข้อมูล (tag-first). POST = สร้างพรีวิว .md ให้ตรวจ/แก้ก่อน (ยังไม่เขียนดิสก์)"""
     if request.method == "POST":
         f = await request.form()
+        # กด "ยกเลิก/กลับไปแก้" จากพรีวิว -> เด้งกลับฟอร์มโดยคงค่าเดิมไว้ (ไม่ล้าง)
+        if f.get("action") == "edit":
+            return templates.TemplateResponse(request, "index.html",
+                                              _form_ctx(vals={k: f.get(k, "") for k in _FORM_FIELDS}))
         tags = [t.lstrip("#").strip() for t in re.split(r"[,\s]+", f.get("tags", "")) if t.strip()]
 
-        # เสียง (ถ้าแนบ) -> ถอดเป็นข้อความ เติมต่อท้ายช่อง "อาการ"
         # dropdown โรงงาน/ฝ่าย: ถ้าเลือก "เพิ่มใหม่" (__new__) ใช้ค่าที่พิมพ์ในช่อง *_new แทน
         plant = f.get("plant", "").strip()
         if plant == "__new__":
@@ -61,12 +76,20 @@ async def index(request: Request):
         if department == "__new__":
             department = f.get("department_new", "").strip()
 
+        # เสียง (ถ้าแนบ) -> ถอดเป็นข้อความ เติมต่อท้ายช่อง "อาการ"
         symptom = f.get("symptom", "").strip()
         audio = f.get("audio")
         if audio and audio.filename:
             apath = _save_upload(audio)
             transcript = await run_in_threadpool(transcribe_audio, apath)
             symptom = (symptom + "\n" + transcript).strip() if symptom else transcript
+
+        # รูปประกอบ (แค่แนบ ไม่ส่งเข้า AI) -> เซฟลง temp ไว้ก่อน ค่อยก๊อปเข้า vault ตอนยืนยัน
+        image = f.get("image")
+        image_path = image_name = None
+        if image and image.filename:
+            image_name = image.filename
+            image_path = _save_upload(image)
 
         fields = {
             "machine": f.get("machine", "").strip(),
@@ -87,21 +110,33 @@ async def index(request: Request):
             "solution": f.get("solution", ""),
             "result": f.get("result", ""),
             "caption": f.get("caption", ""),
+            "image_name": image_name,
         }
-        # รูปประกอบ (แค่แนบ ไม่ส่งเข้า AI)
-        image = f.get("image")
-        image_path = image_name = None
-        if image and image.filename:
-            image_name = image.filename
-            image_path = _save_upload(image)
-        status, case_id = await run_in_threadpool(rag.save_case_and_reindex, fields, image_path, image_name)
-        if case_id:
-            saved = {"case_id": case_id, "written": status, "machine": fields["machine"]}
-    return templates.TemplateResponse(request, "index.html",
-                                      {"active": "capture", "saved": saved,
-                                       "result": None, "tag_options": rag.all_tags(),
-                                       "plant_options": rag.all_plants(),
-                                       "dept_options": rag.all_departments()})
+        # สร้างพรีวิว .md (ยังไม่เขียนดิสก์) ให้ผู้ใช้ตรวจ/แก้ก่อน
+        case_id, md = await run_in_threadpool(vault.render_case, fields)
+        return templates.TemplateResponse(request, "preview.html",
+                                          {"active": "capture", "md": md, "case_id": case_id,
+                                           "plant": fields["plant"], "department": fields["department"],
+                                           "image_name": image_name or "", "image_path": image_path or "",
+                                           "f": fields, "tags_str": " ".join(fields.get("tags") or [])})
+    return templates.TemplateResponse(request, "index.html", _form_ctx())
+
+
+@app.post("/save", response_class=HTMLResponse)
+async def save(request: Request):
+    """ยืนยันบันทึกจากหน้าพรีวิว — เขียนเนื้อ .md (ที่อาจถูกแก้) ลง vault แล้ว index ใหม่"""
+    f = await request.form()
+    md = f.get("md", "")
+    image_name = (f.get("image_name") or "").strip() or None
+    image_path = (f.get("image_path") or "").strip() or None
+    # กันพาธหลุด: อนุญาตก๊อปเฉพาะไฟล์ที่อยู่ใน temp (ที่เพิ่งอัปโหลด) เท่านั้น
+    if image_path and not os.path.abspath(image_path).startswith(os.path.abspath(UPLOAD)):
+        image_path = None
+    status, case_id = await run_in_threadpool(rag.save_markdown_and_reindex, md, image_path, image_name)
+    saved = None
+    if case_id:
+        saved = {"case_id": case_id, "written": status, "machine": vault._parse_fm(md).get("machine", "")}
+    return templates.TemplateResponse(request, "index.html", _form_ctx(saved))
 
 
 # ─────────────────────────────────────────────────────────────

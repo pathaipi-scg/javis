@@ -121,27 +121,35 @@ def _next_case_id(cases_root, year):
     return f"MTN-{year}-{n + 1:04d}"
 
 
-def save_case(fields, image_src=None, image_name=None):
-    """เขียนเคสตามสเปก -> cases/<case_id>.md (frontmatter + 4 หัวข้อ)
-    fields: machine, component, plant, line, source, category, severity, status,
-            downtime_min, parts_used, tags(list), symptom, cause, solution, result, caption
-    คืน (ข้อความสรุป, case_id)"""
-    import datetime as _dt
-    if not VAULT_PATH:
-        return "⚠️ ยังไม่ได้ตั้ง VAULT_PATH ใน .env", None
-    vault = Path(VAULT_PATH)
-    if not vault.exists():
-        return f"⚠️ ไม่พบ vault: {VAULT_PATH} — ตรวจ path ใน .env", None
+def _parse_fm(md):
+    """ดึง frontmatter (ระหว่าง --- คู่แรก) จากเนื้อ .md เป็น dict อย่างง่าย"""
+    m = re.match(r"^---\s*\n(.*?)\n---", md, re.S)
+    fm = {}
+    if m:
+        for line in m.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                fm[k.strip()] = v.strip()
+    return fm
 
-    # โครงชั้น: cases/<โรงงาน>/<ฝ่าย>/<case_id>.md  (เช่น cases/A/production/MTN-2026-0001.md)
-    cases_root = vault / "cases"
-    plant_dir = _existing_or(cases_root, _safe(fields.get("plant")))
-    case_dir = _existing_or(plant_dir, _safe(fields.get("department")))
-    case_dir.mkdir(parents=True, exist_ok=True)
-    plant, dept = plant_dir.name, case_dir.name   # ชื่อโฟลเดอร์จริงที่ใช้ (อาจเป็นตัวเดิมที่มีอยู่)
+
+def render_case(fields):
+    """สร้างเนื้อ .md ของเคส (ยังไม่เขียนลงดิสก์) -> (case_id, markdown)
+    ใช้ทำหน้าพรีวิวก่อนบันทึก — คำนวณ case_id + ชื่อโฟลเดอร์ canonical ให้ตรงกับตอนเซฟจริง
+    fields: machine, component, plant, department, line, source, category, severity,
+            status, downtime_min, parts_used, tags(list), symptom, cause, solution, result, caption"""
+    import datetime as _dt
     now = _dt.datetime.now()
     today = now.strftime("%Y-%m-%d")
-    case_id = _next_case_id(cases_root, now.year)   # นับข้ามทุกชั้นให้เลขไม่ชน
+    plant = _safe(fields.get("plant"))
+    dept = _safe(fields.get("department"))
+    case_id = f"MTN-{now.year}-0001"
+    vault = Path(VAULT_PATH) if VAULT_PATH else None
+    if vault and vault.exists():
+        cases_root = vault / "cases"
+        plant = _existing_or(cases_root, plant).name         # ใช้ชื่อโฟลเดอร์เดิมถ้ามี (กันซ้ำ)
+        dept = _existing_or(cases_root / plant, dept).name
+        case_id = _next_case_id(cases_root, now.year)         # นับข้ามทุกชั้นให้เลขไม่ชน
     tags = fields.get("tags") or []
 
     lines = [
@@ -174,14 +182,35 @@ def save_case(fields, image_src=None, image_name=None):
         "# ผลลัพธ์ (Result)",
         (fields.get("result", "") or "").strip(),
     ]
-    if image_name:
+    if image_name := fields.get("image_name"):
         lines += ["", "# รูปประกอบ", f"![[{image_name}]]"]   # แค่แนบ ไม่วิเคราะห์
         cap = (fields.get("caption", "") or "").strip()
         if cap:
             lines.append(f"> {cap}")
 
+    return case_id, "\n".join(lines) + "\n"
+
+
+def save_markdown(md, image_src=None, image_name=None):
+    """เขียนเนื้อ .md (ที่อาจถูกแก้ในหน้าพรีวิว) ลง vault
+    อ่าน plant/department/case_id จาก frontmatter เพื่อจัดโฟลเดอร์ให้ถูก -> คืน (สรุป, case_id)"""
+    import datetime as _dt
+    if not VAULT_PATH:
+        return "⚠️ ยังไม่ได้ตั้ง VAULT_PATH ใน .env", None
+    vault = Path(VAULT_PATH)
+    if not vault.exists():
+        return f"⚠️ ไม่พบ vault: {VAULT_PATH} — ตรวจ path ใน .env", None
+
+    fm = _parse_fm(md)
+    cases_root = vault / "cases"
+    plant_dir = _existing_or(cases_root, _safe(fm.get("plant")))
+    case_dir = _existing_or(plant_dir, _safe(fm.get("department")))
+    case_dir.mkdir(parents=True, exist_ok=True)
+    plant, dept = plant_dir.name, case_dir.name
+    case_id = fm.get("case_id") or _next_case_id(cases_root, _dt.datetime.now().year)
+
     cfile = case_dir / f"{case_id}.md"
-    cfile.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    cfile.write_text(md if md.endswith("\n") else md + "\n", encoding="utf-8")
     written = [f"cases/{plant}/{dept}/{case_id}.md"]
 
     if image_src and image_name and Path(image_src).exists():
@@ -191,3 +220,13 @@ def save_case(fields, image_src=None, image_name=None):
         written.append(f"attachments/{image_name}")
 
     return "✅ บันทึกเคส " + case_id + " → " + ", ".join(written), case_id
+
+
+def save_case(fields, image_src=None, image_name=None):
+    """เซฟเคสจาก fields ตรงๆ (render แล้วเขียนทันที) — คงไว้ใช้เรียกแบบไม่ผ่านพรีวิว"""
+    if not VAULT_PATH:
+        return "⚠️ ยังไม่ได้ตั้ง VAULT_PATH ใน .env", None
+    if image_name:
+        fields = {**fields, "image_name": image_name}
+    _, md = render_case(fields)
+    return save_markdown(md, image_src=image_src, image_name=image_name)

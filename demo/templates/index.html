@@ -37,14 +37,15 @@
 <form class="card" action="/" method="post" enctype="multipart/form-data">
 
   <label>เครื่อง <span class="req">*</span></label>
-  <input type="text" name="machine" required placeholder="Forming Press">
+  <input type="text" name="machine" required placeholder="Forming Press" value="{{ vals.get('machine','') }}">
 
   <div class="grid">
     <div>
       <label>โรงงาน (Plant) <span class="req">*</span></label>
       <select name="plant" id="plantSel" required onchange="toggleNew('plant')">
-        <option value="" disabled selected>— เลือกโรงงาน —</option>
-        {% for p in plant_options or [] %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        <option value="" disabled {{ 'selected' if not vals.get('plant') }}>— เลือกโรงงาน —</option>
+        {% for p in plant_options or [] %}<option value="{{ p }}" {{ 'selected' if vals.get('plant')==p }}>{{ p }}</option>{% endfor %}
+        {% if vals.get('plant') and vals.get('plant') not in (plant_options or []) %}<option value="{{ vals.get('plant') }}" selected>{{ vals.get('plant') }}</option>{% endif %}
         <option value="__new__">➕ เพิ่มโรงงานใหม่…</option>
       </select>
       <input type="text" name="plant_new" id="plantNew" style="display:none; margin-top:8px"
@@ -53,8 +54,9 @@
     <div>
       <label>ฝ่าย (Department) <span class="req">*</span></label>
       <select name="department" id="deptSel" required onchange="toggleNew('dept')">
-        <option value="" disabled selected>— เลือกฝ่าย —</option>
-        {% for d in dept_options or [] %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+        <option value="" disabled {{ 'selected' if not vals.get('department') }}>— เลือกฝ่าย —</option>
+        {% for d in dept_options or [] %}<option value="{{ d }}" {{ 'selected' if vals.get('department')==d }}>{{ d }}</option>{% endfor %}
+        {% if vals.get('department') and vals.get('department') not in (dept_options or []) %}<option value="{{ vals.get('department') }}" selected>{{ vals.get('department') }}</option>{% endif %}
         <option value="__new__">➕ เพิ่มฝ่ายใหม่…</option>
       </select>
       <input type="text" name="department_new" id="deptNew" style="display:none; margin-top:8px"
@@ -78,10 +80,13 @@
   <div class="hint">tag แรกที่เลือกจะกลายเป็น category ของ dashboard อัตโนมัติ</div>
 
   <label>อาการ / รายละเอียด <span class="req">*</span></label>
-  <textarea name="symptom" required placeholder="แรงดันไฮดรอลิกตกเป็นระยะ เครื่องหยุดกลางรอบ — หรือกดแนบไฟล์เสียงด้านล่าง ระบบจะถอดเติมให้"></textarea>
+  <textarea name="symptom" required placeholder="แรงดันไฮดรอลิกตกเป็นระยะ เครื่องหยุดกลางรอบ — หรือกดแนบไฟล์เสียงด้านล่าง ระบบจะถอดเติมให้">{{ vals.get('symptom','') }}</textarea>
+
+  <label>สาเหตุ (root cause)</label>
+  <textarea name="cause" placeholder="ซีลวาล์ว V-203 เสื่อม มีลมค้างในระบบ">{{ vals.get('cause','') }}</textarea>
 
   <label>วิธีแก้</label>
-  <textarea name="solution" placeholder="เปลี่ยนชุดซีล + ไล่ลมออกจากระบบ"></textarea>
+  <textarea name="solution" placeholder="เปลี่ยนชุดซีล + ไล่ลมออกจากระบบ">{{ vals.get('solution','') }}</textarea>
 
   <div class="sechead">แนบไฟล์ (ไม่บังคับ)</div>
   <div class="grid">
@@ -92,46 +97,49 @@
       <input type="file" name="image" accept="image/*"></div>
   </div>
   <label>คำอธิบายใต้รูป (caption)</label>
-  <input type="text" name="caption" placeholder="จุดที่ซีลรั่ว">
+  <input type="text" name="caption" placeholder="จุดที่ซีลรั่ว" value="{{ vals.get('caption','') }}">
 
-  <details class="more">
+  {% set sev = vals.get('severity') or 'medium' %}
+  {% set st = vals.get('status') or 'resolved' %}
+  {% set src = vals.get('source') or 'morning_meeting' %}
+  {% set adv = vals.get('line') or vals.get('component') or vals.get('downtime_min') or vals.get('parts_used') or vals.get('result') %}
+  <details class="more" {{ 'open' if adv }}>
     <summary>▸ กรอกเพิ่มเติม (ไม่บังคับ — ช่วยให้ dashboard/filter ละเอียดขึ้น)</summary>
     <div class="inner">
       <div class="grid">
-        <div><label>Line</label><input type="text" name="line" placeholder="Line 2"></div>
-        <div><label>Component</label><input type="text" name="component" placeholder="Hydraulic valve V-203"></div>
+        <div><label>Line</label><input type="text" name="line" placeholder="Line 2" value="{{ vals.get('line','') }}"></div>
+        <div><label>Component</label><input type="text" name="component" placeholder="Hydraulic valve V-203" value="{{ vals.get('component','') }}"></div>
       </div>
       <div class="g3">
         <div><label>Severity</label>
           <select name="severity">
-            <option value="low">low</option>
-            <option value="medium" selected>medium</option>
-            <option value="high">high</option>
+            <option value="low" {{ 'selected' if sev=='low' }}>low</option>
+            <option value="medium" {{ 'selected' if sev=='medium' }}>medium</option>
+            <option value="high" {{ 'selected' if sev=='high' }}>high</option>
           </select></div>
         <div><label>Status</label>
           <select name="status">
-            <option value="open">open</option>
-            <option value="resolved" selected>resolved</option>
+            <option value="open" {{ 'selected' if st=='open' }}>open</option>
+            <option value="resolved" {{ 'selected' if st=='resolved' }}>resolved</option>
           </select></div>
-        <div><label>Downtime (นาที)</label><input type="text" name="downtime_min" placeholder="45"></div>
+        <div><label>Downtime (นาที)</label><input type="text" name="downtime_min" placeholder="45" value="{{ vals.get('downtime_min','') }}"></div>
       </div>
       <div class="grid">
-        <div><label>อะไหล่ที่ใช้</label><input type="text" name="parts_used" placeholder="seal kit x1"></div>
-        <div><label>สาเหตุ (root cause)</label><input type="text" name="cause" placeholder="ซีลวาล์วเสื่อม"></div>
+        <div><label>อะไหล่ที่ใช้</label><input type="text" name="parts_used" placeholder="seal kit x1" value="{{ vals.get('parts_used','') }}"></div>
+        <div><label>ผลลัพธ์</label><input type="text" name="result" placeholder="แรงดันคงที่" value="{{ vals.get('result','') }}"></div>
       </div>
       <div class="grid">
-        <div><label>ผลลัพธ์</label><input type="text" name="result" placeholder="แรงดันคงที่"></div>
         <div><label>source</label>
           <select name="source">
-            <option value="morning_meeting" selected>morning_meeting</option>
-            <option value="หน้างาน">หน้างาน</option>
-            <option value="อื่นๆ">อื่นๆ</option>
+            <option value="morning_meeting" {{ 'selected' if src=='morning_meeting' }}>morning_meeting</option>
+            <option value="หน้างาน" {{ 'selected' if src=='หน้างาน' }}>หน้างาน</option>
+            <option value="อื่นๆ" {{ 'selected' if src=='อื่นๆ' }}>อื่นๆ</option>
           </select></div>
       </div>
     </div>
   </details>
 
-  <button type="submit" onclick="return checkTags()">บันทึกเคส</button>
+  <button type="submit" onclick="return checkTags()">▶ ตรวจก่อนบันทึก</button>
 </form>
 
 <script>
@@ -146,6 +154,7 @@
   }
 
   const selected = [];   // เรียงตามลำดับคลิก (tag แรก = category)
+  const preTags = {{ (vals.get('tags','') or '').split() | tojson }};   // tag ที่ prefill กลับมา
   function syncTags() { document.getElementById('tagsfield').value = selected.join(' '); }
   function toggleTag(btn) {
     const t = btn.dataset.tag;
@@ -172,5 +181,16 @@
     if (selected.length === 0) { alert('เลือกอย่างน้อย 1 tag ก่อนบันทึก'); return false; }
     return true;
   }
+  // prefill: เลือก tag เดิมกลับ (สร้าง chip ให้ถ้า tag ไม่มีในรายการ) เรียงตามลำดับเดิม
+  preTags.forEach(function (t) {
+    let btn = document.querySelector('#tagchips .chip[data-tag="' + t + '"]');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'chip'; btn.dataset.tag = t;
+      btn.textContent = '#' + t; btn.onclick = function () { toggleTag(this); };
+      document.getElementById('tagchips').appendChild(btn);
+    }
+    if (selected.indexOf(t) < 0) toggleTag(btn);
+  });
 </script>
 {% endblock %}
