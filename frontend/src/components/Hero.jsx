@@ -39,8 +39,8 @@ export default function Hero({ audience, setAudience }) {
       </div>
 
       <div className="cta-wrap">
-        <a href="#ask" className="cta">
-          <span className="label">เริ่มใช้ Jarvis ฟรี — ทดลอง 14 วัน</span>
+        <a href="#/ask" className="cta">
+          <span className="label">เริ่มใช้ JARVIS — ถามจากเคสซ่อมบำรุงจริง</span>
           <span className="arrow"><Arrow /></span>
         </a>
       </div>

@@ -126,6 +126,63 @@ a { color: inherit; }
 .mock-badge { margin-left: 8px; font-size: 11px; font-weight: 600; color: #ffd27f; background: rgba(255,180,60,.14); border: 1px solid rgba(255,190,90,.35); border-radius: 999px; padding: 2px 9px; }
 .cites { margin-top: 10px; font-size: 13px; color: #a6aed0; }
 
+/* ---------- mic / push-to-talk ---------- */
+.ask-mic { border: 1px solid rgba(255,255,255,.14); cursor: pointer; width: 48px; border-radius: 12px; background: rgba(255,255,255,.05); color: #eef1fb; font-size: 18px; transition: background .15s, box-shadow .15s; }
+.ask-mic:hover { background: rgba(255,255,255,.12); }
+.ask-mic.rec { background: linear-gradient(135deg,#e5484d,#b3244d); box-shadow: 0 0 0 4px rgba(229,72,77,.22); }
+.ask-recbar { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: rgba(229,72,77,.08); border: 1px solid rgba(229,72,77,.3); }
+.ask-recdot { width: 9px; height: 9px; border-radius: 50%; background: #e5484d; box-shadow: 0 0 10px #e5484d; animation: jv-blink 1s infinite; }
+.ask-rectime { font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 700; color: #ff9e9e; min-width: 40px; }
+.ask-meter { flex: 1; display: flex; align-items: center; gap: 3px; height: 30px; }
+.ask-meter .bar { flex: 1; min-width: 2px; height: 8%; border-radius: 2px; background: linear-gradient(180deg,#ff8b8b,#e5484d); transition: height .06s linear; }
+.ask-hint { margin-top: 10px; font-size: 13px; color: #9aa4c4; }
+
+/* ---------- tts ---------- */
+.ask-tts { margin-left: auto; cursor: pointer; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: #c7cde0; font-family: 'Anuphan', sans-serif; font-size: 12.5px; padding: 4px 12px; border-radius: 999px; transition: background .15s; }
+.ask-tts:hover { background: rgba(255,255,255,.12); }
+.ask-tts:disabled { opacity: .5; cursor: default; }
+
+/* ---------- ask standalone page ---------- */
+.ask-page { margin: 48px auto 80px; min-height: 52vh; }
+
+/* ---------- history sidebar (drawer ขวา เลื่อนเข้า/ออก) ---------- */
+.hist-tab { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 40;
+  cursor: pointer; border: 1px solid rgba(255,255,255,.14); border-right: none;
+  background: linear-gradient(180deg, rgba(20,26,52,.92), rgba(14,17,38,.92));
+  color: #c7cde0; font-size: 17px; padding: 13px 12px; border-radius: 12px 0 0 12px;
+  backdrop-filter: blur(8px); box-shadow: -6px 0 24px rgba(0,0,0,.35);
+  transition: right .28s ease, background .15s; }
+.hist-tab:hover { background: rgba(60,70,120,.9); }
+.hist-tab.open { right: min(372px, 92vw); font-size: 20px; padding: 10px 10px; }
+.hist-count { position: absolute; top: -6px; left: -6px; min-width: 19px; height: 19px;
+  display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg,#4b7bff,#8b5cf6); border-radius: 999px; padding: 0 5px; }
+.hist-drawer { position: fixed; right: 0; top: 0; bottom: 0; width: 372px; max-width: 92vw; z-index: 39;
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, rgba(13,16,34,.97), rgba(8,10,24,.97));
+  border-left: 1px solid rgba(255,255,255,.1); backdrop-filter: blur(14px);
+  box-shadow: -18px 0 50px rgba(0,0,0,.5);
+  transform: translateX(100%); transition: transform .28s ease; }
+.hist-drawer.open { transform: translateX(0); }
+.hist-head { display: flex; align-items: center; justify-content: space-between;
+  color: #eef1fb; font-size: 15px; font-weight: 600; padding: 18px 18px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.08); }
+.hist-head-actions { display: flex; align-items: center; gap: 8px; }
+.hist-close { cursor: pointer; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05);
+  color: #c7cde0; font-size: 13px; width: 28px; height: 28px; border-radius: 8px; transition: background .15s; }
+.hist-close:hover { background: rgba(255,255,255,.12); }
+.hist-body { flex: 1; overflow-y: auto; padding: 12px 12px 20px; }
+.hist-empty { color: #8b93b8; font-size: 13.5px; padding: 14px 8px; line-height: 1.6; }
+.hist-clear { cursor: pointer; border: 1px solid rgba(255,120,120,.3); background: rgba(255,90,90,.08); color: #ffb4b4; font-family: 'Anuphan', sans-serif; font-size: 12.5px; padding: 5px 12px; border-radius: 999px; transition: background .15s; }
+.hist-clear:hover { background: rgba(255,90,90,.18); }
+.hist-row { display: block; width: 100%; text-align: left; cursor: pointer; background: none; border: none; border-left: 2px solid rgba(140,120,255,.5); border-radius: 0 10px 10px 0; padding: 9px 10px 10px 13px; margin-bottom: 6px; font-family: 'Anuphan', sans-serif; transition: background .12s; }
+.hist-row:hover { background: rgba(255,255,255,.05); }
+.hist-q { color: #eef1fb; font-size: 14px; font-weight: 600; }
+.hist-plant { margin-left: 7px; font-size: 11px; font-weight: 600; color: #b9a9f5; background: rgba(140,120,255,.14); border: 1px solid rgba(160,120,255,.3); border-radius: 999px; padding: 1px 8px; }
+.hist-t { margin-left: 7px; font-size: 11.5px; font-weight: 400; color: #6f7899; }
+.hist-a { margin-top: 3px; color: #9aa4c4; font-size: 13px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hist-c { margin-top: 3px; font-size: 11.5px; color: #8b93b8; }
+
 /* ---------- features ---------- */
 .features { position: relative; z-index: 10; max-width: 1200px; margin: 70px auto 0; padding: 70px 32px 40px; }
 .sec-head { text-align: center; margin-bottom: 52px; }

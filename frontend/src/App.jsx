@@ -1,12 +1,28 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import Navbar from './components/Navbar.jsx'
 import Hero from './components/Hero.jsx'
 import AskDemo from './components/AskDemo.jsx'
 import Features from './components/Features.jsx'
 import Footer from './components/Footer.jsx'
 
+// routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router): #/ = landing, #/ask = หน้าถาม
+function useRoute() {
+  const [hash, setHash] = useState(window.location.hash)
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+  return hash.startsWith('#/ask') ? 'ask' : 'home'
+}
+
 export default function App() {
   const [audience, setAudience] = useState('biz')
+  const route = useRoute()
+
+  // ขึ้นหน้าใหม่ให้เลื่อนกลับบนสุด
+  useEffect(() => { window.scrollTo(0, 0) }, [route])
+
   return (
     <div className="page">
       <div className="streaks">
@@ -16,9 +32,14 @@ export default function App() {
         <div className="grid" />
       </div>
       <Navbar />
-      <Hero audience={audience} setAudience={setAudience} />
-      <AskDemo audience={audience} />
-      <Features />
+      {route === 'home' ? (
+        <>
+          <Hero audience={audience} setAudience={setAudience} />
+          <Features />
+        </>
+      ) : (
+        <AskDemo />
+      )}
       <Footer />
     </div>
   )

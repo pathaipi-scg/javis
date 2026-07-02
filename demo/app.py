@@ -323,7 +323,24 @@ async def api_ask(body: AskIn):
     return {"answer": answer["text"], "citations": answer["citations"], "mock": mock}
 
 
+@app.get("/api/history")
+async def api_history():
+    """ประวัติถาม-ตอบล่าสุด (ใหม่ก่อน) — log ตัวเดียวกับหน้า Jinja"""
+    return {"history": _load_ask_history()}
+
+
+@app.post("/api/history/clear")
+async def api_history_clear():
+    """ลบประวัติทั้งหมด (เวอร์ชัน JSON ของ /ask/clear)"""
+    try:
+        os.remove(HISTORY_FILE)
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 @app.post("/tts")
+@app.post("/api/tts")
 async def tts_endpoint(request: Request):
     """อ่านคำตอบเป็นเสียง JARVIS (mp3). ถ้า edge-tts ใช้ไม่ได้ -> 503 ให้ฝั่งเว็บ fallback"""
     f = await request.form()
@@ -334,6 +351,7 @@ async def tts_endpoint(request: Request):
 
 
 @app.post("/transcribe")
+@app.post("/api/transcribe")
 async def transcribe_endpoint(request: Request):
     """ถอดเสียงคำถาม (push-to-talk) -> คืน {text} เป็น JSON
     ใช้ที่หน้า /ask: กดพูด -> อัดเสียงในเบราว์เซอร์ -> ส่งมาถอด -> เติมช่องคำถามให้
