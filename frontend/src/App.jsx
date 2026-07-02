@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react'
 import Navbar from './components/Navbar.jsx'
 import Hero from './components/Hero.jsx'
 import AskDemo from './components/AskDemo.jsx'
+import CasePage from './components/CasePage.jsx'
 import Features from './components/Features.jsx'
 import Footer from './components/Footer.jsx'
 
-// routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router): #/ = landing, #/ask = หน้าถาม
+// routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router): #/ = landing, #/ask = ถาม, #/case = ป้อนเคส
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash)
   useEffect(() => {
@@ -13,7 +14,9 @@ function useRoute() {
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
-  return hash.startsWith('#/ask') ? 'ask' : 'home'
+  if (hash.startsWith('#/ask')) return 'ask'
+  if (hash.startsWith('#/case')) return 'case'
+  return 'home'
 }
 
 export default function App() {
@@ -32,14 +35,14 @@ export default function App() {
         <div className="grid" />
       </div>
       <Navbar />
-      {route === 'home' ? (
+      {route === 'home' && (
         <>
           <Hero audience={audience} setAudience={setAudience} />
           <Features />
         </>
-      ) : (
-        <AskDemo />
       )}
+      {route === 'ask' && <AskDemo />}
+      {route === 'case' && <CasePage />}
       <Footer />
     </div>
   )

@@ -339,6 +339,85 @@ async def api_history_clear():
     return {"ok": True}
 
 
+@app.get("/api/form-options")
+async def api_form_options():
+    """ตัวเลือกของฟอร์มป้อนเคส (tag/โรงงาน/ฝ่าย จากเคสจริง + ค่าคงที่)"""
+    return {
+        "tags": await run_in_threadpool(rag.all_tags),
+        "plants": await run_in_threadpool(rag.all_plants),
+        "departments": await run_in_threadpool(rag.all_departments),
+        "severities": ["low", "medium", "high"],
+        "statuses": ["open", "resolved"],
+        "sources": ["morning_meeting", "หน้างาน", "อื่นๆ"],
+    }
+
+
+@app.post("/api/cases/preview")
+async def api_case_preview(request: Request):
+    """สร้างพรีวิว .md จากฟอร์ม (ยังไม่เขียนดิสก์) — เวอร์ชัน JSON ของ POST /
+    รับ multipart: field เดียวกับหน้า Jinja + audio (ถอดต่อท้ายอาการ) + image (แนบ)"""
+    f = await request.form()
+    tags = [t.lstrip("#").strip() for t in re.split(r"[,\s]+", f.get("tags", "")) if t.strip()]
+
+    # เสียง (ถ้าแนบ) -> ถอดเป็นข้อความ เติมต่อท้ายช่อง "อาการ"
+    symptom = (f.get("symptom") or "").strip()
+    audio = f.get("audio")
+    if audio and getattr(audio, "filename", ""):
+        apath = _save_upload(audio)
+        transcript = await run_in_threadpool(transcribe_audio, apath)
+        symptom = (symptom + "\n" + transcript).strip() if symptom else transcript
+
+    # รูปประกอบ (แค่แนบ ไม่ส่งเข้า AI) -> เซฟ temp ก่อน ค่อยก๊อปเข้า vault ตอนยืนยัน
+    image = f.get("image")
+    image_path = image_name = None
+    if image and getattr(image, "filename", ""):
+        image_name = image.filename
+        image_path = _save_upload(image)
+
+    fields = {
+        "machine": (f.get("machine") or "").strip(),
+        "plant": (f.get("plant") or "").strip(),
+        "department": (f.get("department") or "").strip(),
+        "line": (f.get("line") or "").strip(),
+        "component": (f.get("component") or "").strip(),
+        "category": tags[0] if tags else "",
+        "severity": (f.get("severity") or "").strip(),
+        "status": (f.get("status") or "").strip(),
+        "downtime_min": (f.get("downtime_min") or "").strip(),
+        "parts_used": (f.get("parts_used") or "").strip(),
+        "source": (f.get("source") or "").strip(),
+        "tags": tags,
+        "symptom": symptom,
+        "cause": f.get("cause", ""),
+        "solution": f.get("solution", ""),
+        "result": f.get("result", ""),
+        "caption": f.get("caption", ""),
+        "image_name": image_name,
+    }
+    case_id, md = await run_in_threadpool(vault.render_case, fields)
+    return {"case_id": case_id, "md": md, "symptom": symptom,
+            "image_name": image_name or "", "image_path": image_path or ""}
+
+
+class CaseSaveIn(BaseModel):
+    md: str
+    image_path: str = ""
+    image_name: str = ""
+
+
+@app.post("/api/cases/save")
+async def api_case_save(body: CaseSaveIn):
+    """ยืนยันบันทึกเคส (เนื้อ .md ที่อาจแก้ในพรีวิว) — เวอร์ชัน JSON ของ /save"""
+    image_path = body.image_path.strip() or None
+    image_name = body.image_name.strip() or None
+    # กันพาธหลุด: อนุญาตก๊อปเฉพาะไฟล์ใน temp (ที่เพิ่งอัปโหลด) เท่านั้น
+    if image_path and not os.path.abspath(image_path).startswith(os.path.abspath(UPLOAD)):
+        image_path = None
+    status, case_id = await run_in_threadpool(
+        rag.save_markdown_and_reindex, body.md, image_path, image_name)
+    return {"ok": bool(case_id), "case_id": case_id, "written": status}
+
+
 @app.post("/tts")
 @app.post("/api/tts")
 async def tts_endpoint(request: Request):

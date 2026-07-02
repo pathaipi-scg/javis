@@ -11,6 +11,7 @@ export default function Navbar() {
       <div className="nav-links">
         <a href="#/">หน้าแรก</a>
         <a href="#/ask">ถาม JARVIS <span className="badge">RAG</span></a>
+        <a href="#/case">ป้อนเคส</a>
         <a href="#features">ความสามารถ</a>
       </div>
       <div className="nav-actions">
