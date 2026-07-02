@@ -25,7 +25,6 @@ function useRoute() {
 }
 
 export default function App() {
-  const [audience, setAudience] = useState('biz')
   const route = useRoute()
 
   // ขึ้นหน้าใหม่ให้เลื่อนกลับบนสุด
@@ -42,7 +41,7 @@ export default function App() {
       <Navbar />
       {route === 'home' && (
         <>
-          <Hero audience={audience} setAudience={setAudience} />
+          <Hero />
           <Features />
         </>
       )}

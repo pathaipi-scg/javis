@@ -2,12 +2,12 @@ import React from 'react'
 import { IcChat, IcGlobe, IcBook, IcBolt, IcLang, IcShield } from './Icons.jsx'
 
 const FEATURES = [
-  { icon: <IcChat />,   grad: 'linear-gradient(135deg,rgba(75,110,255,.9),rgba(139,92,246,.9))', halo: 'rgba(75,110,255,.22)', title: 'ถาม–ตอบอัจฉริยะ', body: 'เข้าใจภาษาธรรมชาติ ตอบตรงประเด็น เข้าใจบริบทการสนทนาต่อเนื่องเหมือนคุยกับคนจริง' },
-  { icon: <IcGlobe />,  grad: 'linear-gradient(135deg,rgba(139,92,246,.9),rgba(192,132,252,.9))', halo: 'rgba(150,80,240,.22)', title: 'เชื่อมต่อทุกช่องทาง', body: 'รวมทุกแชตไว้ที่เดียว — Messenger, LINE, อีเมล, เว็บไซต์ และช่องทางอื่นกว่า 10 แพลตฟอร์ม' },
-  { icon: <IcBook />,   grad: 'linear-gradient(135deg,rgba(75,110,255,.9),rgba(52,211,153,.85))', halo: 'rgba(52,211,153,.18)', title: 'เรียนรู้จากข้อมูลคุณ', body: 'อัปโหลดเอกสาร คู่มือ หรือฐานความรู้ ให้ Jarvis ตอบจากข้อมูลจริงขององค์กรคุณอย่างแม่นยำ' },
-  { icon: <IcBolt />,   grad: 'linear-gradient(135deg,rgba(139,92,246,.9),rgba(75,110,255,.9))', halo: 'rgba(75,110,255,.22)', title: 'ทำงานอัตโนมัติ', body: 'ตั้งค่าให้ Jarvis จัดการงานซ้ำ ๆ ส่งต่องาน แจ้งเตือน และตอบลูกค้าได้เองตลอด 24 ชั่วโมง' },
-  { icon: <IcLang />,   grad: 'linear-gradient(135deg,rgba(192,132,252,.9),rgba(75,110,255,.9))', halo: 'rgba(150,80,240,.22)', title: 'รองรับหลายภาษา', body: 'สนทนาได้ทั้งไทย อังกฤษ และอีกกว่า 50 ภาษา สลับภาษากลางบทสนทนาได้อย่างเป็นธรรมชาติ' },
-  { icon: <IcShield />, grad: 'linear-gradient(135deg,rgba(52,211,153,.85),rgba(75,110,255,.9))', halo: 'rgba(52,211,153,.18)', title: 'ปลอดภัยระดับองค์กร', body: 'เข้ารหัสข้อมูลทุกชั้น รองรับมาตรฐานความเป็นส่วนตัว ข้อมูลของคุณเป็นความลับเสมอ' },
+  { icon: <IcChat />,   grad: 'linear-gradient(135deg,rgba(75,110,255,.9),rgba(139,92,246,.9))', halo: 'rgba(75,110,255,.22)', title: 'ถาม–ตอบจากเคสจริง (RAG)', body: 'ค้นเคสซ่อมบำรุงที่เคยเกิดจริงด้วยความหมาย แล้วสรุปคำตอบพร้อมแนบเลขเคสอ้างอิง — ไม่มโนเอง ตอบจากข้อมูลที่มีเท่านั้น' },
+  { icon: <IcGlobe />,  grad: 'linear-gradient(135deg,rgba(139,92,246,.9),rgba(192,132,252,.9))', halo: 'rgba(150,80,240,.22)', title: 'พูดถาม–ฟังคำตอบ', body: 'กดไมค์แล้วพูดคำถาม ระบบถอดเสียงไทยด้วย Whisper และอ่านคำตอบกลับเป็นเสียง JARVIS ให้ฟังได้ทันที' },
+  { icon: <IcBook />,   grad: 'linear-gradient(135deg,rgba(75,110,255,.9),rgba(52,211,153,.85))', halo: 'rgba(52,211,153,.18)', title: 'ป้อนเคสง่าย ครบถ้วน', body: 'กรอกฟอร์ม แนบไฟล์เสียงเล่าอาการ (ถอดให้อัตโนมัติ) แนบรูป แล้วตรวจพรีวิวไฟล์ก่อนบันทึกเข้าคลังความรู้' },
+  { icon: <IcBolt />,   grad: 'linear-gradient(135deg,rgba(139,92,246,.9),rgba(75,110,255,.9))', halo: 'rgba(75,110,255,.22)', title: 'ค้นหาด้วยความหมาย', body: 'พิมพ์อาการที่เจอ ระบบหาเคสใกล้เคียงให้แม้ใช้คำไม่ตรงกัน พร้อมคะแนนความเกี่ยวข้องและแท็กหมวดปัญหา' },
+  { icon: <IcLang />,   grad: 'linear-gradient(135deg,rgba(192,132,252,.9),rgba(75,110,255,.9))', halo: 'rgba(150,80,240,.22)', title: 'แยกข้อมูลตามโรงงาน/ฝ่าย', body: 'เลือกขอบเขตได้ว่าให้ตอบจากเคสโรงงานไหน ข้อมูลไม่ปนข้ามโรงงาน พร้อม Dashboard สรุปเคสและ downtime' },
+  { icon: <IcShield />, grad: 'linear-gradient(135deg,rgba(52,211,153,.85),rgba(75,110,255,.9))', halo: 'rgba(52,211,153,.18)', title: 'ข้อมูลอยู่ในองค์กร', body: 'AI (Typhoon2) รันในเครื่องขององค์กรเอง ความรู้เก็บเป็นไฟล์ Markdown ใน Obsidian vault — อ่านได้ แก้ได้ ไม่ผูกกับใคร' },
 ]
 
 export default function Features() {
@@ -15,8 +15,8 @@ export default function Features() {
     <section className="features" id="features">
       <div className="sec-head">
         <div className="eyebrow">Capabilities</div>
-        <h2>Jarvis <span className="grad-text">ทำอะไรได้บ้าง</span></h2>
-        <p className="sec-sub">ผู้ช่วยอัจฉริยะที่พร้อมตอบทุกคำถาม เชื่อมต่อทุกช่องทาง และทำงานแทนคุณ 24 ชั่วโมง</p>
+        <h2>JARVIS <span className="grad-text">ทำอะไรได้บ้าง</span></h2>
+        <p className="sec-sub">คลังความรู้ซ่อมบำรุงที่ถามได้ด้วยเสียง ตอบจากเคสจริง และเก็บข้อมูลไว้ในองค์กรของคุณเอง</p>
       </div>
       <div className="feature-grid">
         {FEATURES.map((f) => (

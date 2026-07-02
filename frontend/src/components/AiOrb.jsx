@@ -16,10 +16,10 @@ export default function AiOrb() {
       </div>
 
       <div className="chip chip-a">
-        <div className="chip-q"><span className="d" />"ช่วยสรุปยอดขายเดือนนี้หน่อย"</div>
+        <div className="chip-q"><span className="d" />"forming press แรงดันตก แก้ยังไง"</div>
       </div>
       <div className="chip chip-b">
-        <div className="chip-r"><Spark />"เรียบร้อยครับ ยอดโต 24% 📈"</div>
+        <div className="chip-r"><Spark />"เปลี่ยนชุดซีลแล้วไล่ลม 📎 MTN-2026-0001"</div>
       </div>
       <div className="chip chip-c">
         <div className="chip-typing">

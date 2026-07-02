@@ -251,7 +251,11 @@ async function toggleMic() {
 async function speak() {
   const btn = document.getElementById('ttsBtn');
   const hint = document.getElementById('ttsHint');
-  const text = (document.getElementById('ansText') || {}).textContent;
+  // ตัดรหัสเคส (MTN-xxxx-xxxx) ออกก่อนอ่าน — ให้เสียงอ่านแต่เนื้อหา
+  const text = ((document.getElementById('ansText') || {}).textContent || '')
+    .replace(/\[?\(?MTN-\d{4}-\d{4}\)?\]?/g, '')
+    .replace(/\(\s*[,;\s]*\)/g, '')
+    .replace(/\s{2,}/g, ' ');
   if (!text || !text.trim()) return;
   btn.disabled = true;
   const label = btn.textContent;

@@ -127,14 +127,24 @@ a { color: inherit; }
 .cites { margin-top: 10px; font-size: 13px; color: #a6aed0; }
 
 /* ---------- mic / push-to-talk ---------- */
-.ask-mic { border: 1px solid rgba(255,255,255,.14); cursor: pointer; width: 48px; border-radius: 12px; background: rgba(255,255,255,.05); color: #eef1fb; font-size: 18px; transition: background .15s, box-shadow .15s; }
-.ask-mic:hover { background: rgba(255,255,255,.12); }
-.ask-mic.rec { background: linear-gradient(135deg,#e5484d,#b3244d); box-shadow: 0 0 0 4px rgba(229,72,77,.22); }
+@keyframes mic-glow {
+  0%,100% { box-shadow: 0 0 0 0 rgba(139,92,246,.55), 0 8px 22px rgba(96,90,255,.45); }
+  50%     { box-shadow: 0 0 0 9px rgba(139,92,246,0), 0 8px 26px rgba(96,90,255,.6); }
+}
+.ask-mic { border: none; cursor: pointer; width: 58px; border-radius: 12px;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg,#4b7bff,#8b5cf6); color: #fff;
+  animation: mic-glow 2.2s ease-in-out infinite;
+  transition: transform .15s, filter .15s; }
+.ask-mic:hover { transform: translateY(-1px) scale(1.04); filter: brightness(1.12); }
+.ask-mic:active { transform: scale(.95); }
+.ask-mic.rec { background: linear-gradient(135deg,#e5484d,#b3244d); animation: none;
+  box-shadow: 0 0 0 5px rgba(229,72,77,.25), 0 8px 24px rgba(229,72,77,.5); }
 .ask-recbar { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 14px; border-radius: 12px; background: rgba(229,72,77,.08); border: 1px solid rgba(229,72,77,.3); }
 .ask-recdot { width: 9px; height: 9px; border-radius: 50%; background: #e5484d; box-shadow: 0 0 10px #e5484d; animation: jv-blink 1s infinite; }
 .ask-rectime { font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 700; color: #ff9e9e; min-width: 40px; }
-.ask-meter { flex: 1; display: flex; align-items: center; gap: 3px; height: 30px; }
-.ask-meter .bar { flex: 1; min-width: 2px; height: 8%; border-radius: 2px; background: linear-gradient(180deg,#ff8b8b,#e5484d); transition: height .06s linear; }
+.ask-meter { flex: 1; display: flex; align-items: center; gap: 3px; height: 34px; }
+.ask-meter .bar { flex: 1; min-width: 2px; height: 10%; border-radius: 999px; background: linear-gradient(180deg,#ff8b8b,#e5484d); transition: height .045s linear; }
 .ask-hint { margin-top: 10px; font-size: 13px; color: #9aa4c4; }
 
 /* ---------- tts ---------- */

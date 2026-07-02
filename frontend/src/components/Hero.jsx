@@ -1,41 +1,24 @@
 import React from 'react'
-import { Building, User, Check, Arrow } from './Icons.jsx'
+import { Check, Arrow } from './Icons.jsx'
 import AiOrb from './AiOrb.jsx'
 
-const SUBS = {
-  biz: 'Automate support & workflows — ผู้ช่วย AI สำหรับทีมและองค์กร ตอบลูกค้าและทำงานแทนคุณทุกช่องทาง',
-  ind: 'Your personal AI companion — ผู้ช่วยส่วนตัวที่ช่วยคิด ช่วยเขียน ค้นหาคำตอบ และจัดการงานในทุกวัน',
-}
-
-export default function Hero({ audience, setAudience }) {
+export default function Hero() {
   return (
     <header className="hero">
-      <div className="toggle">
-        <button
-          className={audience === 'biz' ? 'active' : 'idle'}
-          onClick={() => setAudience('biz')}
-        >
-          <Building /> สำหรับธุรกิจ
-        </button>
-        <button
-          className={audience === 'ind' ? 'active' : 'idle'}
-          onClick={() => setAudience('ind')}
-        >
-          <User /> สำหรับบุคคลทั่วไป
-        </button>
-      </div>
-
       <h1>
-        ผู้ช่วย AI ที่ <span className="grad-text">ถามได้ ตอบได้</span><br />
-        ทุกเรื่อง ทุกเวลา
+        ผู้ช่วยซ่อมบำรุงที่ <span className="grad-text">ถามได้ ตอบได้</span><br />
+        จากเคสจริงของโรงงาน
       </h1>
 
-      <p className="hero-sub" key={audience}>{SUBS[audience]}</p>
+      <p className="hero-sub">
+        พิมพ์หรือพูดถาม — JARVIS ค้นเคสซ่อมบำรุงที่เคยเกิดขึ้นจริง
+        แล้วสรุปคำตอบพร้อมอ้างอิงเคส ด้วย AI ที่รันอยู่ในองค์กรของคุณเอง
+      </p>
 
       <div className="checks">
-        <span className="check"><Check /> ทดลองฟรี 14 วัน</span>
-        <span className="check"><Check /> ตอบได้กว่า 50 ภาษา</span>
-        <span className="check"><Check /> เชื่อมต่อ 10+ ช่องทาง</span>
+        <span className="check"><Check /> ตอบพร้อมอ้างอิงเคสจริง (case id)</span>
+        <span className="check"><Check /> พูดถาม–ฟังคำตอบเป็นเสียงได้</span>
+        <span className="check"><Check /> ข้อมูลอยู่ในองค์กร ไม่ออกไปไหน</span>
       </div>
 
       <div className="cta-wrap">

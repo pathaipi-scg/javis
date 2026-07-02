@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Logo } from './Icons.jsx'
+import { Logo, IcMic, IcStop } from './Icons.jsx'
 
 // คำถามแนะนำ — ตรงกับเคสซ่อมบำรุงจริงใน vault
 const SUGGESTIONS = [
@@ -66,16 +66,23 @@ export default function AskDemo() {
     }
   }
 
-  // ── มิเตอร์ระดับเสียงจริง (Web Audio AnalyserNode) ──
+  // ── คลื่นเสียงจริง (Web Audio, time-domain waveform) ──
+  // อ่านรูปคลื่นตรงจากไมค์ แท่งขยายจากกึ่งกลางขึ้น-ลงตามแรงสั่นของเสียง -> ดูเป็นคลื่นพูด
   function drawMeter(analyser) {
+    // แถบอาจยังไม่ถูกวาด (React ยังไม่ render recbar ตอนเฟรมแรก) — ห้าม return ตาย ต้องวนรอ
     const bars = barsRef.current?.children
-    if (!bars) return
-    const buf = new Uint8Array(analyser.frequencyBinCount)
-    analyser.getByteFrequencyData(buf)
-    const step = Math.floor(buf.length / N_BARS) || 1
-    for (let i = 0; i < bars.length; i++) {
-      const v = buf[i * step] / 255
-      bars[i].style.height = Math.max(8, v * 100) + '%'
+    if (bars && bars.length) {
+      const buf = new Uint8Array(analyser.fftSize)
+      analyser.getByteTimeDomainData(buf)          // 128 = เงียบ, ห่างจาก 128 = เสียงดัง
+      const step = Math.floor(buf.length / N_BARS) || 1
+      for (let i = 0; i < bars.length; i++) {
+        let peak = 0
+        for (let j = i * step; j < (i + 1) * step && j < buf.length; j++) {
+          const d = Math.abs(buf[j] - 128) / 128   // 0..1 ตามแอมพลิจูดจริง
+          if (d > peak) peak = d
+        }
+        bars[i].style.height = Math.max(10, Math.min(100, peak * 160)) + '%'
+      }
     }
     rafRef.current = requestAnimationFrame(() => drawMeter(analyser))
   }
@@ -106,7 +113,7 @@ export default function AskDemo() {
     const ctx = new (window.AudioContext || window.webkitAudioContext)()
     ctxRef.current = ctx
     const analyser = ctx.createAnalyser()
-    analyser.fftSize = 128
+    analyser.fftSize = 512                      // ตัวอย่างคลื่นละเอียดขึ้น แท่งไหลลื่นขึ้น
     ctx.createMediaStreamSource(stream).connect(analyser)
     drawMeter(analyser)
 
@@ -142,8 +149,17 @@ export default function AskDemo() {
   }
 
   // ── อ่านคำตอบเป็นเสียง JARVIS (edge-tts) + fallback เสียงเบราว์เซอร์ ──
+  function cleanForSpeech(t) {
+    // ตัดรหัสเคส (MTN-2026-0004) + วงเล็บ/ก้านที่เหลือว่าง — ให้เสียงอ่านแต่เนื้อหา
+    return (t || '')
+      .replace(/\[?\(?MTN-\d{4}-\d{4}\)?\]?/g, '')
+      .replace(/\(\s*[,;\s]*\)/g, '')          // วงเล็บที่ว่างหลังตัดรหัส
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  }
+
   async function speak() {
-    const text = answer?.answer?.trim()
+    const text = cleanForSpeech(answer?.answer)
     if (!text || speaking) return
     setSpeaking(true)
     try {
@@ -199,9 +215,9 @@ export default function AskDemo() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-          <button type="button" onClick={toggleMic} title="กดพูด"
+          <button type="button" onClick={toggleMic} title={recording ? 'หยุดอัด' : 'กดพูดถาม'}
                   className={'ask-mic' + (recording ? ' rec' : '')}>
-            {recording ? '⏹' : '🎙'}
+            {recording ? <IcStop /> : <IcMic />}
           </button>
           <button className="ask-send" type="submit" disabled={loading || !q.trim()}>
             {loading ? 'กำลังคิด…' : 'ถาม'}
