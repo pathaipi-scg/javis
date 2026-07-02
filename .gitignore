@@ -1,6 +1,6 @@
 # secrets / config ส่วนตัว
 .env
-demo/.env
+backend/.env
 
 # python
 __pycache__/
@@ -11,8 +11,8 @@ venv/
 env/
 
 # ไฟล์อัป/ชั่วคราว
-demo/media/
-demo/ask_history.jsonl
+backend/media/
+backend/ask_history.jsonl
 *.wav
 *.mp3
 *.m4a

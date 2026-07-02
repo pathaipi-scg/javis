@@ -282,6 +282,16 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .db-bar-count { flex: 0 0 30px; color: #eef1fb; font-size: 13.5px; font-weight: 600; }
 @media (max-width: 700px) { .db-stats { grid-template-columns: 1fr; } .db-bar-name { flex-basis: 90px; } }
 
+/* ---------- stt test page ---------- */
+.stt-cfg { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.stt-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: #9aa4c4; font-size: 13.5px; margin-bottom: 6px; }
+.stt-meta b { color: #eef1fb; }
+.stt-transcript { background: rgba(8,10,22,.9); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 14px 16px; color: #dfe6ff; font-size: 14.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; max-height: 440px; overflow-y: auto; }
+.stt-summary { background: rgba(75,110,255,.1); border: 1px solid rgba(120,140,255,.25); border-radius: 12px; padding: 13px 16px; color: #e6e9f7; font-size: 14.5px; line-height: 1.6; }
+.stt-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13.5px; }
+.stt-table th, .stt-table td { border: 1px solid rgba(255,255,255,.1); padding: 8px 10px; text-align: left; color: #d3d9ec; }
+.stt-table th { background: rgba(255,255,255,.05); color: #fff; font-weight: 600; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
   .nav-links { display: none; }

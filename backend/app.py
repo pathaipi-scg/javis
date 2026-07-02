@@ -1,22 +1,23 @@
 """
-Demo เว็บ: รับไฟล์เสียงประชุม + รูปภาพ(พร้อม caption) -> ถอดข้อความ -> Typhoon2 8B ดึงข้อมูลเครื่องจักร
--> แสดงผล + พรีวิว .md -> ปุ่ม Save เขียนลง Obsidian vault เดิม (ทาง A)
+Backend (FastAPI) ของ JARVIS — คลังความรู้ซ่อมบำรุง
 
-Backend = FastAPI (เดิมเป็น Flask) แต่ยังเสิร์ฟหน้าเดิมด้วย Jinja2 เหมือนเดิม
-ทุก route/พฤติกรรมเท่าเดิม — Vue frontend ค่อยเสียบทีหลังเมื่อระบบนิ่ง
+หน้าที่:
+  - JSON API ทั้งหมดใต้ /api/* (ask/RAG, cases, search, dashboard, stt, transcribe, tts, history)
+  - เสิร์ฟ React SPA (frontend/dist) ที่ราก "/" -> แอพเดียว พอร์ตเดียว
+สมองอยู่ที่ transcribe.py / llm.py / rag.py / tts.py / vault.py
 
 รัน:
     copy .env.example .env   (แล้วเติม QWEN_BASE_URL + VAULT_PATH)
     pip install -r requirements.txt
-    python app.py
-    เปิด http://127.0.0.1:5000
+    python app.py            # http://127.0.0.1:5000
+frontend dev (แก้ UI เห็นสด): cd ../frontend && npm run dev  (:5173 proxy /api -> :5000)
+แก้ UI เสร็จ -> npm run build ให้ :5000 เห็นด้วย
 """
 from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, Response, JSONResponse
 from starlette.concurrency import run_in_threadpool
 import os, sys, tempfile, re, time, shutil, json
 
@@ -43,7 +44,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-templates = Jinja2Templates(directory="templates")
 UPLOAD = tempfile.gettempdir()
 
 
@@ -82,106 +82,8 @@ def _load_ask_history(n=HISTORY_SHOW):
         return []
 
 
-# ช่องในฟอร์มที่ prefill กลับได้ (ตอนกด "ยกเลิก/กลับไปแก้" จากหน้าพรีวิว)
-_FORM_FIELDS = ("machine", "plant", "department", "line", "component", "severity",
-                "status", "downtime_min", "parts_used", "source",
-                "tags", "symptom", "solution", "cause", "result", "caption")
-
-
-def _form_ctx(saved=None, vals=None):
-    """context ของหน้าฟอร์ม index.html (ตัวเลือก dropdown/tag + ค่า prefill)"""
-    return {"active": "capture", "saved": saved, "result": None,
-            "tag_options": rag.all_tags(), "plant_options": rag.all_plants(),
-            "dept_options": rag.all_departments(), "vals": vals or {}}
-
-
-@app.api_route("/legacy", methods=["GET", "POST"], response_class=HTMLResponse)
-async def index(request: Request):
-    """หน้าป้อนข้อมูล Jinja เดิม (tag-first) — ย้ายจาก "/" มา /legacy เพราะรากเสิร์ฟ React แล้ว
-    POST = สร้างพรีวิว .md ให้ตรวจ/แก้ก่อน (ยังไม่เขียนดิสก์)"""
-    if request.method == "POST":
-        f = await request.form()
-        # กด "ยกเลิก/กลับไปแก้" จากพรีวิว -> เด้งกลับฟอร์มโดยคงค่าเดิมไว้ (ไม่ล้าง)
-        if f.get("action") == "edit":
-            return templates.TemplateResponse(request, "index.html",
-                                              _form_ctx(vals={k: f.get(k, "") for k in _FORM_FIELDS}))
-        tags = [t.lstrip("#").strip() for t in re.split(r"[,\s]+", f.get("tags", "")) if t.strip()]
-
-        # dropdown โรงงาน/ฝ่าย: ถ้าเลือก "เพิ่มใหม่" (__new__) ใช้ค่าที่พิมพ์ในช่อง *_new แทน
-        plant = f.get("plant", "").strip()
-        if plant == "__new__":
-            plant = f.get("plant_new", "").strip()
-        department = f.get("department", "").strip()
-        if department == "__new__":
-            department = f.get("department_new", "").strip()
-
-        # เสียง (ถ้าแนบ) -> ถอดเป็นข้อความ เติมต่อท้ายช่อง "อาการ"
-        symptom = f.get("symptom", "").strip()
-        audio = f.get("audio")
-        if audio and audio.filename:
-            apath = _save_upload(audio)
-            transcript = await run_in_threadpool(transcribe_audio, apath)
-            symptom = (symptom + "\n" + transcript).strip() if symptom else transcript
-
-        # รูปประกอบ (แค่แนบ ไม่ส่งเข้า AI) -> เซฟลง temp ไว้ก่อน ค่อยก๊อปเข้า vault ตอนยืนยัน
-        image = f.get("image")
-        image_path = image_name = None
-        if image and image.filename:
-            image_name = image.filename
-            image_path = _save_upload(image)
-
-        fields = {
-            "machine": f.get("machine", "").strip(),
-            "plant": plant,
-            "department": department,
-            "line": f.get("line", "").strip(),
-            "component": f.get("component", "").strip(),
-            # category: เอามาจาก tag แรกอัตโนมัติ (ไม่มีช่องให้กรอกแล้ว)
-            "category": tags[0] if tags else "",
-            "severity": f.get("severity", "").strip(),
-            "status": f.get("status", "").strip(),
-            "downtime_min": f.get("downtime_min", "").strip(),
-            "parts_used": f.get("parts_used", "").strip(),
-            "source": f.get("source", "").strip(),
-            "tags": tags,
-            "symptom": symptom,
-            "cause": f.get("cause", ""),
-            "solution": f.get("solution", ""),
-            "result": f.get("result", ""),
-            "caption": f.get("caption", ""),
-            "image_name": image_name,
-        }
-        # สร้างพรีวิว .md (ยังไม่เขียนดิสก์) ให้ผู้ใช้ตรวจ/แก้ก่อน
-        case_id, md = await run_in_threadpool(vault.render_case, fields)
-        return templates.TemplateResponse(request, "preview.html",
-                                          {"active": "capture", "md": md, "case_id": case_id,
-                                           "plant": fields["plant"], "department": fields["department"],
-                                           "image_name": image_name or "", "image_path": image_path or "",
-                                           "f": fields, "tags_str": " ".join(fields.get("tags") or [])})
-    return templates.TemplateResponse(request, "index.html", _form_ctx())
-
-
-@app.post("/save", response_class=HTMLResponse)
-async def save(request: Request):
-    """ยืนยันบันทึกจากหน้าพรีวิว — เขียนเนื้อ .md (ที่อาจถูกแก้) ลง vault แล้ว index ใหม่"""
-    f = await request.form()
-    md = f.get("md", "")
-    image_name = (f.get("image_name") or "").strip() or None
-    image_path = (f.get("image_path") or "").strip() or None
-    # กันพาธหลุด: อนุญาตก๊อปเฉพาะไฟล์ที่อยู่ใน temp (ที่เพิ่งอัปโหลด) เท่านั้น
-    if image_path and not os.path.abspath(image_path).startswith(os.path.abspath(UPLOAD)):
-        image_path = None
-    status, case_id = await run_in_threadpool(rag.save_markdown_and_reindex, md, image_path, image_name)
-    saved = None
-    if case_id:
-        saved = {"case_id": case_id, "written": status, "machine": vault._parse_fm(md).get("machine", "")}
-    return templates.TemplateResponse(request, "index.html", _form_ctx(saved))
-
-
 # ─────────────────────────────────────────────────────────────
-# หน้า Serve (ด่าน 4): ค้นหา/ถาม-ตอบ/dashboard
-# ของจริงทำผ่าน rag.py (bge-m3 + Typhoon + เคสใน vault)
-# ถ้า vault ว่าง/ต่อ model ไม่ติด -> ตก mock ข้างล่างนี้แทน
+# ค่า mock: ถ้า vault ว่าง/ต่อ model ไม่ติด -> /api/search, /api/dashboard ตกมาใช้ค่านี้
 # ─────────────────────────────────────────────────────────────
 
 _MOCK_SEARCH = [
@@ -208,83 +110,8 @@ _MOCK_STATS = ({"total": 142, "downtime": 3820, "machines": 27}, [
 ])
 
 
-@app.get("/search", response_class=HTMLResponse)
-async def search(request: Request, q: str = "", plant: str = ""):
-    q = q.strip()
-    plant = plant.strip()
-    results = []
-    used_mock = False
-    if q:
-        # ของจริง: semantic search (bge-m3 + cosine) จากเคสใน vault; plant=กรองเฉพาะโรงงานนั้น
-        results = await run_in_threadpool(rag.search, q, 8, plant or None)
-        if results is None:
-            # vault ว่าง/ต่อ embeddings ไม่ติด -> ตก mock เพื่อให้หน้าเดินต่อได้
-            results = _MOCK_SEARCH
-            used_mock = True
-    # รวม tag จากผลลัพธ์เป็น facet
-    facet = {}
-    for r in results:
-        for t in r["tags"]:
-            facet[t] = facet.get(t, 0) + 1
-    tag_facet = sorted(facet.items(), key=lambda x: -x[1])
-    return templates.TemplateResponse(request, "search.html",
-                                      {"active": "search", "q": q,
-                                       "results": results, "tag_facet": tag_facet, "mock": used_mock,
-                                       "plant": plant, "plants": rag.all_plants()})
-
-
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    # ของจริง: นับ/จัดกลุ่มจากเคสใน vault; ถ้าว่าง -> mock
-    s = await run_in_threadpool(rag.stats)
-    stats, categories = s if s else _MOCK_STATS
-    return templates.TemplateResponse(request, "dashboard.html",
-                                      {"active": "dashboard", "stats": stats,
-                                       "categories": categories, "mock": s is None})
-
-
-@app.api_route("/ask", methods=["GET", "POST"], response_class=HTMLResponse)
-async def ask(request: Request):
-    q = ""
-    plant = ""
-    if request.method == "POST":
-        f = await request.form()
-        q = f.get("q", "").strip()
-        plant = f.get("plant", "").strip()
-    answer = None
-    used_mock = False
-    if q:
-        # ของจริง: RAG = ค้นเคสที่เกี่ยว (bge-m3) -> Typhoon สรุป -> แนบ case_id; plant=จำกัดขอบเขตโรงงาน
-        answer = await run_in_threadpool(rag.answer, q, 4, plant or None)
-        if answer is None:
-            used_mock = True
-            answer = {
-                "text": "[MOCK] อาการแรงดันไฮดรอลิกตกของ Forming Press มักเกิดจากซีลวาล์วเสื่อม "
-                        "วิธีแก้คือเปลี่ยนชุดซีลแล้วไล่ลมออกจากระบบ ใช้เวลาซ่อมราว 45 นาที",
-                "citations": ["MTN-2026-0142", "MTN-2026-0098"],
-            }
-        _log_ask(q, plant, answer, used_mock)
-    return templates.TemplateResponse(request, "ask.html",
-                                      {"active": "ask", "q": q, "answer": answer, "mock": used_mock,
-                                       "plant": plant, "plants": rag.all_plants(),
-                                       "history": _load_ask_history()})
-
-
-@app.post("/ask/clear")
-async def ask_clear():
-    """ลบประวัติถาม-ตอบทั้งหมด (ลบไฟล์ log) แล้วกลับไปหน้า /ask"""
-    try:
-        os.remove(HISTORY_FILE)
-    except FileNotFoundError:
-        pass
-    except Exception:
-        pass
-    return RedirectResponse("/ask", status_code=303)
-
-
 # ─────────────────────────────────────────────────────────────
-# JSON API สำหรับ React frontend (frontend/ — Vite :5173 proxy /api มาที่นี่)
-# สมองตัวเดียวกับหน้า Jinja ทุกอย่าง — ต่างแค่คืน JSON แทน HTML
+# JSON API สำหรับ React frontend (frontend/) — dev proxy /api -> :5000
 # ─────────────────────────────────────────────────────────────
 from pydantic import BaseModel
 
@@ -427,6 +254,38 @@ async def api_dashboard():
     return {"stats": stats, "categories": categories, "mock": s is None}
 
 
+@app.get("/api/stt-config")
+async def api_stt_config():
+    """ค่าคอนฟิก STT (โมเดล/อุปกรณ์/remote) ให้หน้าทดสอบโชว์"""
+    return {"model": WHISPER_MODEL, "device": WHISPER_DEVICE, "remote": bool(STT_BASE_URL)}
+
+
+@app.post("/api/stt")
+async def api_stt(request: Request):
+    """ทดสอบ STT: อัปคลิป -> ถอด (Whisper) -> ดึงข้อมูลเครื่อง (Typhoon) -> JSON
+    ไว้วัดความแม่นของ Whisper กับเสียงจริง — เวอร์ชัน JSON ของหน้า /stt เดิม"""
+    f = await request.form()
+    audio = f.get("audio")
+    if not (audio and getattr(audio, "filename", "")):
+        return JSONResponse({"error": "no audio"}, status_code=400)
+    apath = _save_upload(audio)
+    t0 = time.time()
+    text = await run_in_threadpool(transcribe_audio, apath)
+    stt_sec = round(time.time() - t0, 1)
+    t1 = time.time()
+    data = await run_in_threadpool(llm.extract_machines, text)
+    return {
+        "filename": audio.filename,
+        "text": text,
+        "seconds": stt_sec,
+        "is_mock": text.lstrip().startswith("[MOCK"),
+        "summary": data.get("summary", ""),
+        "machines": data.get("machines", []),
+        "llm_seconds": round(time.time() - t1, 1),
+        "llm_mock": str(data.get("summary", "")).startswith("[MOCK"),
+    }
+
+
 class CaseSaveIn(BaseModel):
     md: str
     image_path: str = ""
@@ -474,46 +333,12 @@ async def transcribe_endpoint(request: Request):
     return {"text": clean, "is_mock": text.lstrip().startswith("[MOCK")}
 
 
-@app.api_route("/stt", methods=["GET", "POST"], response_class=HTMLResponse)
-async def stt(request: Request):
-    """หน้าทดสอบ STT: อัปคลิป -> กดแปลง -> โชว์ข้อความที่ถอดได้
-    ไว้วัดความแม่นของ Whisper กับเสียงจริง (ไม่เกี่ยวกับการบันทึกเคส)"""
-    result = None
-    if request.method == "POST":
-        f = await request.form()
-        audio = f.get("audio")
-        if audio and audio.filename:
-            apath = _save_upload(audio)
-            t0 = time.time()
-            text = await run_in_threadpool(transcribe_audio, apath)
-            stt_sec = round(time.time() - t0, 1)
-            # ต่อท่อ: เอา transcript ไปให้ Typhoon สรุป/ดึงข้อมูลเครื่องจักร
-            t1 = time.time()
-            data = await run_in_threadpool(llm.extract_machines, text)
-            result = {
-                "filename": audio.filename,
-                "text": text,
-                "seconds": stt_sec,
-                # transcribe_audio คืนสตริงขึ้นต้น "[MOCK" เมื่อยังต่อ Whisper ไม่ได้
-                "is_mock": text.lstrip().startswith("[MOCK"),
-                # ผลสรุปจาก Typhoon
-                "summary": data.get("summary", ""),
-                "machines": data.get("machines", []),
-                "llm_seconds": round(time.time() - t1, 1),
-                "llm_mock": str(data.get("summary", "")).startswith("[MOCK"),
-            }
-    cfg = {"model": WHISPER_MODEL, "device": WHISPER_DEVICE, "remote": bool(STT_BASE_URL)}
-    return templates.TemplateResponse(request, "stt.html",
-                                      {"active": "stt", "result": result, "cfg": cfg})
-
-
 # ─────────────────────────────────────────────────────────────
-# เฟส 4: เสิร์ฟ React build (frontend/dist) ที่ราก -> จบในแอพเดียวที่ :5000
-# dev ยังใช้ Vite :5173 ได้เหมือนเดิม (สะดวก HMR) — build ใหม่ด้วย `npm run build`
-# ถ้ายังไม่เคย build จะไม่พัง: "/" จะ redirect ไปหน้า Jinja เดิมแทน
+# เสิร์ฟ React build (frontend/dist) ที่ราก -> แอพเดียว พอร์ตเดียวที่ :5000
+# dev ใช้ Vite :5173 (HMR) proxy /api มาที่นี่ — แก้ UI เสร็จ `npm run build`
 # ─────────────────────────────────────────────────────────────
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                              "frontend", "dist")
@@ -524,17 +349,18 @@ if os.path.isdir(os.path.join(FRONTEND_DIST, "assets")):
 
     @app.get("/", response_class=HTMLResponse)
     async def spa_root():
-        """หน้าแรก = React app (routing ภายในเป็น hash #/ask #/case ...)"""
+        """หน้าแรก = React app (routing ภายในเป็น hash #/ask #/case #/stt ...)"""
         return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
 
     @app.get("/favicon.svg")
     async def spa_favicon():
         return FileResponse(os.path.join(FRONTEND_DIST, "favicon.svg"))
 else:
-    @app.get("/")
+    @app.get("/", response_class=PlainTextResponse)
     async def root_fallback():
-        """ยังไม่ได้ build React -> พาไปหน้า Jinja เดิม"""
-        return RedirectResponse("/legacy")
+        """ยังไม่ได้ build React — บอกวิธี build (API ที่ /api/* ยังใช้ได้ปกติ)"""
+        return ("ยังไม่ได้ build frontend — รัน: cd ../frontend && npm install && npm run build\n"
+                "แล้ว refresh หน้านี้ (API พร้อมใช้ที่ /api/*)")
 
 
 if __name__ == "__main__":

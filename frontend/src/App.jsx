@@ -5,6 +5,7 @@ import AskDemo from './components/AskDemo.jsx'
 import CasePage from './components/CasePage.jsx'
 import SearchPage from './components/SearchPage.jsx'
 import DashboardPage from './components/DashboardPage.jsx'
+import SttPage from './components/SttPage.jsx'
 import Features from './components/Features.jsx'
 import Footer from './components/Footer.jsx'
 
@@ -21,6 +22,7 @@ function useRoute() {
   if (hash.startsWith('#/case')) return 'case'
   if (hash.startsWith('#/search')) return 'search'
   if (hash.startsWith('#/dashboard')) return 'dashboard'
+  if (hash.startsWith('#/stt')) return 'stt'
   return 'home'
 }
 
@@ -49,6 +51,7 @@ export default function App() {
       {route === 'case' && <CasePage />}
       {route === 'search' && <SearchPage />}
       {route === 'dashboard' && <DashboardPage />}
+      {route === 'stt' && <SttPage />}
       <Footer />
     </div>
   )

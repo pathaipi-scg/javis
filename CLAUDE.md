@@ -7,16 +7,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Three layers, different maturity:
 
 - **`docs/`** — design docs (in Thai) for the *full planned system*: a meeting → knowledge-base pipeline on **Django + MSSQL + WhisperX + Django-Q2**. This system is **not built yet** — docs are the spec/blueprint (also feed Canva slides). Read `docs/README.md` first for the index.
-- **`demo/`** — the **working FastAPI backend**: JSON API under `/api/*` (ask/RAG, cases, search, dashboard, transcribe, tts, history) **plus** the older Jinja2 pages (moved: capture form is at `/legacy`; `/ask` `/stt` `/search` `/dashboard` keep their paths). Serves the built React app at `/` when `frontend/dist` exists (falls back to redirecting to `/legacy` otherwise).
-- **`frontend/`** — **React 18 + Vite 5 SPA** (dark "Jarvis" theme, hash routing: `#/` landing, `#/ask`, `#/case`, `#/search`, `#/dashboard`). Dev: `npm run dev` on :5173 (proxies `/api` → :5000). Production: `npm run build` → `dist/` served by FastAPI at :5000 — single app, single port.
+- **`backend/`** — the **working FastAPI backend**: JSON API only, all under `/api/*` (`ask` RAG, `plants`, `form-options`, `cases/preview`, `cases/save`, `search`, `dashboard`, `stt`, `stt-config`, `transcribe`, `tts`, `history`). Serves the built React SPA at `/` from `frontend/dist` (if not built yet, `/` shows a build hint; `/api/*` still works). The old Jinja2 HTML pages were **removed** — the UI is 100% React now. (Folder was renamed from `demo/` — older docs/commits may still say `demo`.)
+- **`frontend/`** — **React 18 + Vite 5 SPA** (dark "Jarvis" theme, hash routing: `#/` landing, `#/ask`, `#/case`, `#/search`, `#/stt`, `#/dashboard`). Dev: `npm run dev` on :5173 (proxies `/api` → :5000). Production: `npm run build` → `dist/` served by FastAPI at :5000 — single app, single port.
 
-Do not assume the Django/MSSQL stack exists in code — it is the future target described in `docs/`, while `demo/` + `frontend/` are the present reality (FastAPI + React, no DB, files written straight to an Obsidian vault).
+Do not assume the Django/MSSQL stack exists in code — it is the future target described in `docs/`, while `backend/` + `frontend/` are the present reality (FastAPI + React, no DB, files written straight to an Obsidian vault).
 
-## Pipeline (what the demo does)
+## Pipeline (what the backend does)
 
 Audio + image(+caption) → transcript (faster-whisper) + caption merged into one context → an LLM (currently **Typhoon2 8B**, a Thai-tuned Llama 3.1) extracts machine-maintenance data as JSON → render Markdown preview → on Save, write to an Obsidian vault.
 
-`demo/app.py` wires it: `/process` runs transcribe → extract → render; `/save` writes to vault. Three modules behind it:
+`backend/app.py` wires it via the `/api/*` endpoints (the React SPA calls them). Modules behind it:
 - `transcribe.py` — `transcribe_audio(path)` via faster-whisper (Thai, VAD).
 - `llm.py` — `extract_machines(context, image_path)` → dict; `render_markdown(...)` → `.md` string.
 - `vault.py` — `save_to_vault(markdown, machines, date)` writes `meetings/<date>.md` (overwrite) and `machines/machine-X.md` (create + append a history row).
@@ -27,18 +27,22 @@ Audio + image(+caption) → transcript (faster-whisper) + caption merged into on
 
 ## Running
 
+Normal use — one command (FastAPI serves the built React app):
 ```bash
-cd demo
+cd backend
 copy .env.example .env   # then fill in real values (Windows)
 pip install -r requirements.txt
 python app.py            # http://127.0.0.1:5000
 ```
+A local venv already exists at `backend/.venv` (Python 3.12, faster-whisper + CUDA installed). Invoke it directly without activating: `.\.venv\Scripts\python.exe app.py`.
+
+Editing the UI (live reload): also run `cd frontend && npm run dev` (:5173, proxies `/api` → :5000). **After changing frontend code you must `npm run build`** for :5000 to reflect it — the dev server auto-reloads, the built `dist/` does not.
 
 `faster-whisper` is commented out in `requirements.txt` — install it separately (`pip install faster-whisper`) only when you want real transcription; otherwise the mock runs.
 
-No test suite, linter, or build step exists. Verify changes by running `app.py` and exercising the form.
+No test suite or linter exists. Verify changes by running `app.py` and exercising the React UI (or hitting `/api/*` directly).
 
-## Configuration (`demo/.env`)
+## Configuration (`backend/.env`)
 
 All backends are configured via env (loaded by `python-dotenv`); `llm.py` header constants are the fallbacks.
 
@@ -51,10 +55,10 @@ All backends are configured via env (loaded by `python-dotenv`); `llm.py` header
 - `WHISPER_MODEL` / `WHISPER_DEVICE` — `cuda` if a GPU is available, else `cpu` (slow).
 - `VAULT_PATH` — existing Obsidian vault root; `meetings/` and `machines/` subfolders are created under it.
 
-`.env` and `demo/.env` are gitignored.
+`.env` and `backend/.env` are gitignored.
 
 ## Conventions
 
 - Code comments, docstrings, prompts, and UI strings are in **Thai** — match that when editing.
 - The LLM is reached through the **OpenAI-compatible** API only (vLLM / Ollama / LM Studio are interchangeable — change just URL + model name; never hardcode a vendor SDK).
-- MSSQL is described in docs as the intended source of truth with `.md` as a regenerable view; the demo skips the DB and writes `.md` directly.
+- MSSQL is described in docs as the intended source of truth with `.md` as a regenerable view; the backend skips the DB and writes `.md` directly.
