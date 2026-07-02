@@ -27,6 +27,7 @@ KM/
 # node / react frontend
 node_modules/
 frontend/dist/
+frontend/.vite/
 
 # ide
 .vscode/
