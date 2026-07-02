@@ -5,6 +5,7 @@
     <VAULT_PATH>/machines/machine-X.md      ไฟล์เครื่องจักร (สร้างถ้ายังไม่มี + append ประวัติ)
 """
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -83,3 +84,149 @@ def save_to_vault(markdown, machines, date, when=None, image_src=None, image_nam
         written.append(f"machines/machine-{name}.md")
 
     return "✅ เขียนแล้ว: " + ", ".join(written)
+
+
+# ─────────────────────────────────────────────────────────────
+# tag-first: เขียนเคส 1 ไฟล์ลง cases/<case_id>.md ตามสเปก PIPELINE.html
+# (ผู้ใช้กรอก field เอง — แม่นกว่าให้ AI สกัด)
+# ─────────────────────────────────────────────────────────────
+
+def _safe(name):
+    """แปลงเป็นชื่อโฟลเดอร์ที่ปลอดภัย (กันอักขระต้องห้ามบน Windows/Obsidian)
+    ว่าง -> _unsorted เพื่อไม่ให้เคสหล่นหาย"""
+    name = (name or "").strip()
+    name = re.sub(r'[<>:"/\\|?*]', "_", name)   # อักขระที่ Windows ห้ามใช้ในชื่อไฟล์
+    name = name.strip(". ")                       # กันจุด/ช่องว่างท้ายชื่อ (Windows ตัดทิ้ง)
+    return name or "_unsorted"
+
+
+def _existing_or(parent, name):
+    """ถ้ามีโฟลเดอร์ชื่อตรงกันอยู่แล้ว (ไม่สนพิมพ์เล็ก/ใหญ่) ใช้ตัวเดิม
+    กันเคสเดียวกันแตกเป็นสองโฟลเดอร์ เช่น production / Production"""
+    if parent.exists():
+        for d in parent.iterdir():
+            if d.is_dir() and d.name.casefold() == name.casefold():
+                return d
+    return parent / name
+
+
+def _next_case_id(cases_root, year):
+    """รหัสเคสถัดไป MTN-<ปี>-<NNNN> (4 หลัก) ไม่ชนของเดิม
+    สแกนทุกชั้นย่อย (rglob) เพราะเคสกระจายอยู่ใน cases/<plant>/<dept>/"""
+    n = 0
+    for f in cases_root.rglob(f"MTN-{year}-*.md"):
+        m = re.search(rf"MTN-{year}-(\d+)", f.stem)
+        if m:
+            n = max(n, int(m.group(1)))
+    return f"MTN-{year}-{n + 1:04d}"
+
+
+def _parse_fm(md):
+    """ดึง frontmatter (ระหว่าง --- คู่แรก) จากเนื้อ .md เป็น dict อย่างง่าย"""
+    m = re.match(r"^---\s*\n(.*?)\n---", md, re.S)
+    fm = {}
+    if m:
+        for line in m.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                fm[k.strip()] = v.strip()
+    return fm
+
+
+def render_case(fields):
+    """สร้างเนื้อ .md ของเคส (ยังไม่เขียนลงดิสก์) -> (case_id, markdown)
+    ใช้ทำหน้าพรีวิวก่อนบันทึก — คำนวณ case_id + ชื่อโฟลเดอร์ canonical ให้ตรงกับตอนเซฟจริง
+    fields: machine, component, plant, department, line, source, category, severity,
+            status, downtime_min, parts_used, tags(list), symptom, cause, solution, result, caption"""
+    import datetime as _dt
+    now = _dt.datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    plant = _safe(fields.get("plant"))
+    dept = _safe(fields.get("department"))
+    case_id = f"MTN-{now.year}-0001"
+    vault = Path(VAULT_PATH) if VAULT_PATH else None
+    if vault and vault.exists():
+        cases_root = vault / "cases"
+        plant = _existing_or(cases_root, plant).name         # ใช้ชื่อโฟลเดอร์เดิมถ้ามี (กันซ้ำ)
+        dept = _existing_or(cases_root / plant, dept).name
+        case_id = _next_case_id(cases_root, now.year)         # นับข้ามทุกชั้นให้เลขไม่ชน
+    tags = fields.get("tags") or []
+
+    lines = [
+        "---",
+        f"case_id: {case_id}",
+        f"date: {today}",
+        f"source: {fields.get('source', '')}",
+        f"plant: {plant}",
+        f"department: {dept}",
+        f"line: {fields.get('line', '')}",
+        f"machine: {fields.get('machine', '')}",
+        f"component: {fields.get('component', '')}",
+        f"category: {fields.get('category', '')}",
+        f"severity: {fields.get('severity', '')}",
+        f"status: {fields.get('status', '')}",
+        f"downtime_min: {fields.get('downtime_min') or 0}",
+        f"parts_used: {fields.get('parts_used', '')}",
+        f"tags: [{', '.join(tags)}]",
+        "---",
+        "",
+        "# อาการ (Symptom)",
+        (fields.get("symptom", "") or "").strip(),
+        "",
+        "# สาเหตุ (Root cause)",
+        (fields.get("cause", "") or "").strip(),
+        "",
+        "# วิธีแก้ (Solution)",
+        (fields.get("solution", "") or "").strip(),
+        "",
+        "# ผลลัพธ์ (Result)",
+        (fields.get("result", "") or "").strip(),
+    ]
+    if image_name := fields.get("image_name"):
+        lines += ["", "# รูปประกอบ", f"![[{image_name}]]"]   # แค่แนบ ไม่วิเคราะห์
+        cap = (fields.get("caption", "") or "").strip()
+        if cap:
+            lines.append(f"> {cap}")
+
+    return case_id, "\n".join(lines) + "\n"
+
+
+def save_markdown(md, image_src=None, image_name=None):
+    """เขียนเนื้อ .md (ที่อาจถูกแก้ในหน้าพรีวิว) ลง vault
+    อ่าน plant/department/case_id จาก frontmatter เพื่อจัดโฟลเดอร์ให้ถูก -> คืน (สรุป, case_id)"""
+    import datetime as _dt
+    if not VAULT_PATH:
+        return "⚠️ ยังไม่ได้ตั้ง VAULT_PATH ใน .env", None
+    vault = Path(VAULT_PATH)
+    if not vault.exists():
+        return f"⚠️ ไม่พบ vault: {VAULT_PATH} — ตรวจ path ใน .env", None
+
+    fm = _parse_fm(md)
+    cases_root = vault / "cases"
+    plant_dir = _existing_or(cases_root, _safe(fm.get("plant")))
+    case_dir = _existing_or(plant_dir, _safe(fm.get("department")))
+    case_dir.mkdir(parents=True, exist_ok=True)
+    plant, dept = plant_dir.name, case_dir.name
+    case_id = fm.get("case_id") or _next_case_id(cases_root, _dt.datetime.now().year)
+
+    cfile = case_dir / f"{case_id}.md"
+    cfile.write_text(md if md.endswith("\n") else md + "\n", encoding="utf-8")
+    written = [f"cases/{plant}/{dept}/{case_id}.md"]
+
+    if image_src and image_name and Path(image_src).exists():
+        att = vault / "attachments"
+        att.mkdir(exist_ok=True)
+        shutil.copy(image_src, att / image_name)
+        written.append(f"attachments/{image_name}")
+
+    return "✅ บันทึกเคส " + case_id + " → " + ", ".join(written), case_id
+
+
+def save_case(fields, image_src=None, image_name=None):
+    """เซฟเคสจาก fields ตรงๆ (render แล้วเขียนทันที) — คงไว้ใช้เรียกแบบไม่ผ่านพรีวิว"""
+    if not VAULT_PATH:
+        return "⚠️ ยังไม่ได้ตั้ง VAULT_PATH ใน .env", None
+    if image_name:
+        fields = {**fields, "image_name": image_name}
+    _, md = render_case(fields)
+    return save_markdown(md, image_src=image_src, image_name=image_name)

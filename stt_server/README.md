@@ -1,7 +1,7 @@
 # STT service (รันบน server)
 
 แปลงเสียง → ข้อความ ด้วย faster-whisper ผ่าน HTTP ให้เครื่อง local เรียกใช้
-เครื่อง local ส่งไฟล์เสียงมา → server ถอด → คืน transcript กลับไปแสดงผล/เข้า qwen
+เครื่อง local ส่งไฟล์เสียงมา → server ถอด → คืน transcript กลับไปแสดงผล/เข้า LLM (Typhoon)
 
 ## ติดตั้งบน server
 

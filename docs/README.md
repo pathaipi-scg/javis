@@ -14,7 +14,7 @@
 | [07-architecture.md](07-architecture.md) | สถาปัตยกรรมรวม + จุดเด่น |
 
 ## สรุป stack
-เสียง+รูป → WhisperX → MSSQL → Qwen3 (server ภายใน) → Markdown → Obsidian + Dataview
+เสียง+รูป → WhisperX → MSSQL → Typhoon2 8B (server ภายใน) → Markdown → Obsidian + Dataview
 Backend: Django + Django-Q2 (คิวบน MSSQL — ไม่ต้องลง Redis/Celery)
 
 ## Demo เว็บ

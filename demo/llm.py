@@ -74,11 +74,22 @@ def _mock_extract(context):
             "machines": found}
 
 
+_client = None
+
+
+def _get_client():
+    """OpenAI client ตัวเดียวใช้ซ้ำ (สร้างใหม่ทุก call บน Windows ช้าเพราะ localhost/IPv6)"""
+    global _client
+    if _client is None:
+        from openai import OpenAI
+        _client = OpenAI(base_url=_normalize_base(QWEN_BASE_URL), api_key=QWEN_API_KEY)
+    return _client
+
+
 def extract_machines(context, image_path=None):
     """ป้อน context (transcript + caption) ให้ Qwen3 -> dict ข้อมูลเครื่องจักร"""
     try:
-        from openai import OpenAI
-        client = OpenAI(base_url=_normalize_base(QWEN_BASE_URL), api_key=QWEN_API_KEY)
+        client = _get_client()
 
         user_content = PROMPT.format(context=context or "(ไม่มีเนื้อหา)")
 

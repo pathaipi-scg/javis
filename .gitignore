@@ -12,6 +12,7 @@ env/
 
 # ไฟล์อัป/ชั่วคราว
 demo/media/
+demo/ask_history.jsonl
 *.wav
 *.mp3
 *.m4a
@@ -23,9 +24,19 @@ media/processed/
 vault/
 KM/
 
+# node / react frontend
+node_modules/
+frontend/dist/
+
 # ide
 .vscode/
 .idea/
 
 # todo ส่วนตัว
 /TODO.md
+
+# mockup / pipeline ส่วนตัว (ยังไม่ขึ้น repo)
+/PIPELINE-ASSESSMENT.md
+/PIPELINE-ASSESSMENT.html
+/PIPELINE-FLOW.html
+/MOCKUP-search.html

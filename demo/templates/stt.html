@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}ทดสอบ STT — JARVIS{% endblock %}
+
+{% block style %}
+  .sub { color: #778; font-size: 13.5px; margin: 4px 0 18px; }
+  .cfg { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .cfg .pill b { color: #1d2b2b; }
+  .meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+          font-size: 13px; color: #667; margin: 2px 0 12px; }
+  .meta b { color: #1d2b2b; }
+  .ttl { font-weight: 700; color: var(--teal); margin: 4px 0 8px; font-size: 15px; }
+  .transcript { background: #fbfbf7; border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; font-size: 14.5px; line-height: 1.7; white-space: pre-wrap;
+    word-break: break-word; max-height: 460px; overflow-y: auto; }
+  .copybtn { background: #5a6a6a; padding: 8px 16px; font-size: 13px; margin: 0 0 0 auto; }
+  .row { display: flex; align-items: center; }
+  .btnrow { display: flex; align-items: center; gap: 12px; }
+  .loading { display: none; align-items: center; gap: 9px; color: var(--teal);
+             font-size: 14px; font-weight: 600; margin-top: 16px; }
+  .loading.on { display: flex; }
+  .spinner { width: 18px; height: 18px; border: 3px solid #cfe3e3;
+             border-top-color: var(--teal); border-radius: 50%;
+             animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sumlabel { font-size: 12.5px; color: #778; font-weight: 600; margin: 16px 0 6px; }
+  .summary { background: #f0f6f6; border: 1px solid #d6e6e6; border-radius: 8px;
+             padding: 12px 14px; font-size: 14.5px; line-height: 1.6; }
+{% endblock %}
+
+{% block body %}
+<h1>🎙️ ทดสอบ STT
+  {% if result and result.is_mock %}<span class="mock">MOCK — ยังต่อ Whisper ไม่ได้</span>{% endif %}
+</h1>
+<div class="sub">เลือกไฟล์เสียง/วิดีโอ → กดแปลง → ดูข้อความที่ Whisper ถอดได้ (วัดความแม่นกับเสียงจริง)</div>
+
+<div class="cfg">
+  <span class="pill">โมเดล: <b>{{ cfg.model }}</b></span>
+  <span class="pill">อุปกรณ์: <b>{{ cfg.device }}</b></span>
+  <span class="pill">ถอดที่: <b>{{ 'server (remote)' if cfg.remote else 'เครื่องนี้ (local)' }}</b></span>
+</div>
+
+<form class="card" action="/stt" method="post" enctype="multipart/form-data"
+      onsubmit="document.getElementById('loading').classList.add('on');
+                this.querySelector('button').disabled = true;">
+  <label>🎵 ไฟล์เสียง / วิดีโอ</label>
+  <input type="file" name="audio" accept="audio/*,video/*" required>
+  <div class="hint">รองรับ mp3 / m4a / wav / mp4 ฯลฯ — คลิปยาวใช้เวลานาน (large-v3 ช้ากว่า realtime เล็กน้อย)</div>
+  <div class="btnrow">
+    <button type="submit">แปลงเป็นข้อความ</button>
+  </div>
+  <div class="loading" id="loading">
+    <span class="spinner"></span> กำลังถอดเสียง... อย่าเพิ่งปิดหน้านี้ (คลิปยาวใช้เวลาหลายนาที)
+  </div>
+</form>
+
+{% if result %}
+<div class="card">
+  <div class="meta">
+    <span>📄 <b>{{ result.filename }}</b></span>
+    <span>· ⏱️ ถอดเสร็จใน <b>{{ result.seconds }}</b> วินาที</span>
+  </div>
+  <div class="row">
+    <div class="ttl">📝 ข้อความที่ถอดได้</div>
+    <button type="button" class="copybtn" onclick="copyText()">คัดลอก</button>
+  </div>
+  <div class="transcript" id="transcript">{{ result.text }}</div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <div class="ttl">🤖 ผลสรุปจาก Typhoon
+      {% if result.llm_mock %}<span class="mock">MOCK — ต่อ Typhoon ไม่ติด</span>{% endif %}
+    </div>
+    <span class="meta" style="margin:0 0 0 auto;">⏱️ สรุปใน <b>{{ result.llm_seconds }}</b> วินาที</span>
+  </div>
+
+  <div class="sumlabel">สรุปภาพรวม</div>
+  <div class="summary">{{ result.summary or '— (ไม่มีสรุป)' }}</div>
+
+  <div class="sumlabel">เครื่องจักรที่ดึงได้ ({{ result.machines|length }})</div>
+  {% if result.machines %}
+  <table>
+    <tr><th>เครื่อง</th><th>อาการ</th><th>จุด/ตำแหน่ง</th><th>วันที่ซ่อม</th><th>การแก้ไข</th></tr>
+    {% for m in result.machines %}
+    <tr>
+      <td>{{ m.machine or '-' }}</td>
+      <td>{{ m.issue or '-' }}</td>
+      <td>{{ m.location or '-' }}</td>
+      <td>{{ m.repair_date or '-' }}</td>
+      <td>{{ m.action or '-' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="summary">— Typhoon ดึงเครื่องจักรไม่ได้ (ข้อความอาจไม่มีข้อมูลเครื่อง หรือ transcript เพี้ยนเกินไป)</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+  function copyText() {
+    const t = document.getElementById('transcript');
+    if (t) navigator.clipboard.writeText(t.innerText);
+  }
+</script>
+{% endblock %}

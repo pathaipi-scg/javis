@@ -1,5 +1,8 @@
-# จำเป็นสำหรับ demo เว็บ
-flask==3.1.3
+# จำเป็นสำหรับ demo เว็บ (backend = FastAPI, เสิร์ฟหน้าเดิมด้วย Jinja2)
+fastapi>=0.115
+uvicorn[standard]>=0.30
+jinja2>=3.1          # เรนเดอร์ templates/
+python-multipart>=0.0.9  # จำเป็นสำหรับรับฟอร์ม/อัปโหลดไฟล์ (request.form())
 
 # เรียก Qwen3 ผ่าน OpenAI-compatible API (vLLM/Ollama/LM Studio)
 openai==2.44.0
@@ -10,5 +13,20 @@ python-dotenv==1.2.2
 # ส่งไฟล์เสียงไปถอดที่ STT service บน server (โหมด remote)
 requests>=2.31
 
-# ถอดเสียง (option — ไม่ลงก็ได้ จะใช้ mock transcript)
+# อ่านคำตอบเป็นเสียงไทย (TTS) หน้า /ask — ออนไลน์ ฟรี ไม่ต้อง key
+# ถ้าไม่ลง/เน็ตไม่ถึง หน้าเว็บจะ fallback ไปใช้เสียงสังเคราะห์ของเบราว์เซอร์เอง
+edge-tts>=6.1
+
+# ─────────────────────────────────────────────────────────────
+# ถอดเสียงในเครื่อง (option — ไม่ลงก็ได้ จะตกไป mock/remote)
+# ลงเมื่อต้องการถอดเสียงด้วย faster-whisper บนเครื่องนี้:
+#     pip install faster-whisper==1.2.1
+# (จะดึง ctranslate2 / av / tokenizers / onnxruntime มาเองอัตโนมัติ)
 # faster-whisper==1.2.1
+
+# ── ใช้ GPU (CUDA) ถอดเสียง — เฉพาะเครื่องที่มี NVIDIA GPU ──
+# บน Windows ctranslate2 ไม่ได้ดึง CUDA runtime มาให้ ต้องลงเอง
+# แล้ว transcribe.py (_add_cuda_dll_dirs) จะดัน path เข้า PATH ตอนรัน
+#     pip install nvidia-cublas-cu12==12.9.2.10 nvidia-cudnn-cu12==9.23.2.1
+# nvidia-cublas-cu12==12.9.2.10
+# nvidia-cudnn-cu12==9.23.2.1
