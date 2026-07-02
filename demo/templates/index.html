@@ -34,7 +34,7 @@
   — <a href="/search?q={{ saved.machine }}">ค้นดูเคสนี้</a></div>
 {% endif %}
 
-<form class="card" action="/" method="post" enctype="multipart/form-data">
+<form class="card" action="/legacy" method="post" enctype="multipart/form-data">
 
   <label>เครื่อง <span class="req">*</span></label>
   <input type="text" name="machine" required placeholder="Forming Press" value="{{ vals.get('machine','') }}">

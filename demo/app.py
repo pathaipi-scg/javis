@@ -95,9 +95,10 @@ def _form_ctx(saved=None, vals=None):
             "dept_options": rag.all_departments(), "vals": vals or {}}
 
 
-@app.api_route("/", methods=["GET", "POST"], response_class=HTMLResponse)
+@app.api_route("/legacy", methods=["GET", "POST"], response_class=HTMLResponse)
 async def index(request: Request):
-    """หน้าป้อนข้อมูล (tag-first). POST = สร้างพรีวิว .md ให้ตรวจ/แก้ก่อน (ยังไม่เขียนดิสก์)"""
+    """หน้าป้อนข้อมูล Jinja เดิม (tag-first) — ย้ายจาก "/" มา /legacy เพราะรากเสิร์ฟ React แล้ว
+    POST = สร้างพรีวิว .md ให้ตรวจ/แก้ก่อน (ยังไม่เขียนดิสก์)"""
     if request.method == "POST":
         f = await request.form()
         # กด "ยกเลิก/กลับไปแก้" จากพรีวิว -> เด้งกลับฟอร์มโดยคงค่าเดิมไว้ (ไม่ล้าง)
@@ -504,6 +505,36 @@ async def stt(request: Request):
     cfg = {"model": WHISPER_MODEL, "device": WHISPER_DEVICE, "remote": bool(STT_BASE_URL)}
     return templates.TemplateResponse(request, "stt.html",
                                       {"active": "stt", "result": result, "cfg": cfg})
+
+
+# ─────────────────────────────────────────────────────────────
+# เฟส 4: เสิร์ฟ React build (frontend/dist) ที่ราก -> จบในแอพเดียวที่ :5000
+# dev ยังใช้ Vite :5173 ได้เหมือนเดิม (สะดวก HMR) — build ใหม่ด้วย `npm run build`
+# ถ้ายังไม่เคย build จะไม่พัง: "/" จะ redirect ไปหน้า Jinja เดิมแทน
+# ─────────────────────────────────────────────────────────────
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "frontend", "dist")
+
+if os.path.isdir(os.path.join(FRONTEND_DIST, "assets")):
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")),
+              name="spa-assets")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def spa_root():
+        """หน้าแรก = React app (routing ภายในเป็น hash #/ask #/case ...)"""
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+
+    @app.get("/favicon.svg")
+    async def spa_favicon():
+        return FileResponse(os.path.join(FRONTEND_DIST, "favicon.svg"))
+else:
+    @app.get("/")
+    async def root_fallback():
+        """ยังไม่ได้ build React -> พาไปหน้า Jinja เดิม"""
+        return RedirectResponse("/legacy")
 
 
 if __name__ == "__main__":

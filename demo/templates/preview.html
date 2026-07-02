@@ -31,7 +31,7 @@
   </form>
 
   <!-- ยกเลิก: กลับไปฟอร์มโดยคงค่าเดิมทุกช่อง (จะได้ไม่ต้องกรอกใหม่หมด) -->
-  <form action="/" method="post" style="margin-top:-4px">
+  <form action="/legacy" method="post" style="margin-top:-4px">
     <input type="hidden" name="action" value="edit">
     <input type="hidden" name="tags" value="{{ tags_str }}">
     {% for k in ["machine","plant","department","line","component","severity","status","downtime_min","parts_used","source","symptom","solution","cause","result","caption"] %}

@@ -4,12 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Two layers, different maturity:
+Three layers, different maturity:
 
 - **`docs/`** — design docs (in Thai) for the *full planned system*: a meeting → knowledge-base pipeline on **Django + MSSQL + WhisperX + Django-Q2**. This system is **not built yet** — docs are the spec/blueprint (also feed Canva slides). Read `docs/README.md` first for the index.
-- **`demo/`** — a **working FastAPI prototype** (server-renders the existing Jinja2 pages) that implements a slimmed-down slice of the pipeline end to end. This is the only runnable code. When asked to "run the app" or change behavior, this is almost always the target. A Vue SPA frontend is planned but not built yet — routes still return HTML, not JSON.
+- **`demo/`** — the **working FastAPI backend**: JSON API under `/api/*` (ask/RAG, cases, search, dashboard, transcribe, tts, history) **plus** the older Jinja2 pages (moved: capture form is at `/legacy`; `/ask` `/stt` `/search` `/dashboard` keep their paths). Serves the built React app at `/` when `frontend/dist` exists (falls back to redirecting to `/legacy` otherwise).
+- **`frontend/`** — **React 18 + Vite 5 SPA** (dark "Jarvis" theme, hash routing: `#/` landing, `#/ask`, `#/case`, `#/search`, `#/dashboard`). Dev: `npm run dev` on :5173 (proxies `/api` → :5000). Production: `npm run build` → `dist/` served by FastAPI at :5000 — single app, single port.
 
-Do not assume the Django/MSSQL stack exists in code — it is the future target described in `docs/`, while `demo/` is the present reality (FastAPI + Jinja2, no DB, files written straight to an Obsidian vault).
+Do not assume the Django/MSSQL stack exists in code — it is the future target described in `docs/`, while `demo/` + `frontend/` are the present reality (FastAPI + React, no DB, files written straight to an Obsidian vault).
 
 ## Pipeline (what the demo does)
 
