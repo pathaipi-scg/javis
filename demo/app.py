@@ -32,6 +32,17 @@ except Exception:
     pass
 
 app = FastAPI()
+
+# อนุญาตให้ React dev server (Vite :5173) เรียก /api/* ได้ (ตอน build เสิร์ฟรวมแล้วไม่ต้องใช้)
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 templates = Jinja2Templates(directory="templates")
 UPLOAD = tempfile.gettempdir()
 
@@ -268,6 +279,48 @@ async def ask_clear():
     except Exception:
         pass
     return RedirectResponse("/ask", status_code=303)
+
+
+# ─────────────────────────────────────────────────────────────
+# JSON API สำหรับ React frontend (frontend/ — Vite :5173 proxy /api มาที่นี่)
+# สมองตัวเดียวกับหน้า Jinja ทุกอย่าง — ต่างแค่คืน JSON แทน HTML
+# ─────────────────────────────────────────────────────────────
+from pydantic import BaseModel
+
+
+class AskIn(BaseModel):
+    question: str
+    plant: str = ""      # จำกัดขอบเขตโรงงาน ("" = ทุกโรงงาน)
+
+
+@app.get("/api/health")
+async def api_health():
+    return {"status": "ok", "service": "jarvis-maintenance-kb"}
+
+
+@app.get("/api/plants")
+async def api_plants():
+    """รายชื่อโรงงานที่มีเคส — ให้ frontend ทำ dropdown"""
+    return {"plants": await run_in_threadpool(rag.all_plants)}
+
+
+@app.post("/api/ask")
+async def api_ask(body: AskIn):
+    """ถาม JARVIS (RAG จากเคสจริง) — ตัวเดียวกับหน้า /ask แต่คืน JSON"""
+    q = body.question.strip()
+    if not q:
+        return JSONResponse({"error": "no question"}, status_code=400)
+    plant = body.plant.strip()
+    answer = await run_in_threadpool(rag.answer, q, 4, plant or None)
+    mock = answer is None
+    if mock:
+        answer = {
+            "text": "[MOCK] อาการแรงดันไฮดรอลิกตกของ Forming Press มักเกิดจากซีลวาล์วเสื่อม "
+                    "วิธีแก้คือเปลี่ยนชุดซีลแล้วไล่ลมออกจากระบบ ใช้เวลาซ่อมราว 45 นาที",
+            "citations": ["MTN-2026-0142", "MTN-2026-0098"],
+        }
+    _log_ask(q, plant, answer, mock)
+    return {"answer": answer["text"], "citations": answer["citations"], "mock": mock}
 
 
 @app.post("/tts")

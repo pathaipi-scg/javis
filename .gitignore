@@ -24,6 +24,10 @@ media/processed/
 vault/
 KM/
 
+# node / react frontend
+node_modules/
+frontend/dist/
+
 # ide
 .vscode/
 .idea/
