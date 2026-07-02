@@ -7,13 +7,72 @@
 .cite a { color: var(--teal); }
 select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px;
          font-size: 14px; background: #fff; font-family: inherit; }
+.qrow { display: flex; gap: 8px; align-items: stretch; }
+.qrow input { flex: 1; }
+.mic { flex: 0 0 auto; width: 48px; font-size: 20px; background: #5a6a6a; color: #fff;
+       border: none; border-radius: 8px; cursor: pointer; line-height: 1;
+       transition: background .15s, transform .1s; }
+.mic:hover { background: #47595a; }
+.mic:active { transform: scale(.94); }
+.mic.rec { background: #c0392b; box-shadow: 0 0 0 4px rgba(192,57,43,.18); }
+
+/* แผงกำลังอัด: โผล่ใต้ช่องถามเฉพาะตอนอัด */
+.recbar { display: none; align-items: center; gap: 12px; margin-top: 10px; padding: 10px 14px;
+          background: #fff5f4; border: 1px solid #f0c4bf; border-radius: 10px; }
+.recbar.on { display: flex; }
+.recdot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: #c0392b;
+          animation: blink 1s step-start infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+/* มิเตอร์ระดับเสียงจริง — แท่งสูงตามเสียงเข้าไมค์ */
+.meter { flex: 1; display: flex; align-items: center; gap: 3px; height: 34px; }
+.meter .bar { flex: 1; min-width: 2px; height: 8%; background: #c0392b; border-radius: 2px;
+              transition: height .06s linear; }
+.rectime { flex: 0 0 auto; font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 700;
+           color: #c0392b; min-width: 44px; text-align: right; }
+.recstop { flex: 0 0 auto; padding: 7px 14px; font-size: 13px; background: #c0392b; color: #fff;
+           border: none; border-radius: 8px; cursor: pointer; }
+
+/* หน้านี้กว้างขึ้นเพื่อวางประวัติด้านขวา (override .wrap เดิม 920px) */
+.wrap { max-width: 1180px; }
+.asklayout { display: flex; gap: 20px; align-items: flex-start; }
+.askmain { flex: 1 1 auto; min-width: 0; }
+.asksidebar { flex: 0 0 340px; position: sticky; top: 76px;
+              max-height: calc(100vh - 96px); overflow-y: auto; }
+@media (max-width: 900px) {           /* จอแคบ -> เรียงบนล่าง */
+  .asklayout { flex-direction: column; }
+  .asksidebar { flex: 1 1 auto; width: 100%; position: static; max-height: none; }
+}
+
+/* ประวัติถาม-ตอบ */
+.hist { padding: 16px; }
+.hist-head { display: flex; align-items: center; margin-bottom: 12px; }
+.hist-head h2 { font-size: 16px; margin: 0; }
+.hist-clear { margin: 0 0 0 auto; padding: 5px 12px; font-size: 12px; background: #eee; color: #a33;
+              border: 1px solid #e0cccc; border-radius: 7px; cursor: pointer; }
+.hist-clear:hover { background: #fbe8e8; }
+.hist-item { display: block; width: 100%; text-align: left; background: none; color: inherit;
+             border: 0; border-left: 3px solid var(--teal); border-radius: 0;
+             padding: 8px 8px 10px 12px; margin: 0 0 6px; cursor: pointer; font: inherit;
+             transition: background .12s; }
+.hist-item:hover { background: #f2f8f8; }
+.hist-item:not(:last-child) { border-bottom: 1px solid #eee; }
+.hist-q { font-weight: 700; color: #1d2b2b; font-size: 14px; }
+.hist-meta { font-size: 11.5px; color: #889; margin-left: 6px; font-weight: 400; }
+.hist-a { font-size: 13px; color: #445; margin-top: 4px; line-height: 1.5;
+          display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hist-cite { font-size: 11.5px; color: #778; margin-top: 4px; }
+.hist-plant { display: inline-block; font-size: 11px; background: #eef6f6; color: var(--teal);
+              border-radius: 4px; padding: 1px 7px; margin-left: 6px; }
+.hist-empty { color: #889; font-size: 13.5px; }
 {% endblock %}
 
 {% block body %}
 <h1>🤖 ถาม JARVIS {% if mock %}<span class="mock">MOCK — vault ว่าง/ต่อ RAG ไม่ติด</span>{% endif %}</h1>
 <div class="flow">ถาม (พิมพ์/พูด) → ค้นเคสที่เกี่ยว → Typhoon สรุปคำตอบ + อ้างอิง case_id → อ่านเป็นเสียง JARVIS (TTS)</div>
 
-<form class="card" action="/ask" method="post">
+<div class="asklayout">
+<div class="askmain">
+<form id="askForm" class="card" action="/ask" method="post">
   <label>โรงงาน (ตอบจากเคสในโรงงานนี้เท่านั้น)</label>
   <select name="plant">
     <option value="">— ทุกโรงงาน —</option>
@@ -22,8 +81,17 @@ select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radiu
     {% endfor %}
   </select>
   <label>ถามเรื่องเครื่องจักร</label>
-  <input type="text" name="q" value="{{ q or '' }}" placeholder="เช่น เครื่อง forming press แรงดันตก แก้ยังไง">
-  <div class="hint">เฟสแรกใช้พิมพ์ก่อน — ปุ่มกดพูด (push-to-talk) ค่อยเพิ่มทีหลัง</div>
+  <div class="qrow">
+    <input type="text" id="q" name="q" value="{{ q or '' }}" placeholder="เช่น เครื่อง forming press แรงดันตก แก้ยังไง">
+    <button type="button" id="micBtn" class="mic" onclick="toggleMic()" title="กดพูด">🎙️</button>
+  </div>
+  <div class="recbar" id="recBar">
+    <span class="recdot"></span>
+    <span class="rectime" id="recTime">0:00</span>
+    <div class="meter" id="meter"></div>
+    <button type="button" class="recstop" onclick="toggleMic()">⏹️ หยุด</button>
+  </div>
+  <div class="hint" id="micHint">พิมพ์ หรือกด 🎙️ เพื่อพูดถาม (ถอดด้วย Whisper บนเครื่อง)</div>
   <button type="submit">ถาม</button>
 </form>
 
@@ -44,8 +112,142 @@ select { width: 100%; padding: 10px; border: 1px solid var(--line); border-radiu
   <div class="hint" id="ttsHint">เสียงไทยจาก edge-tts — ถ้าเซิร์ฟเวอร์ต่อ TTS ไม่ได้ จะใช้เสียงของเบราว์เซอร์แทนอัตโนมัติ</div>
 </div>
 {% endif %}
+</div><!-- /askmain -->
+
+<aside class="asksidebar">
+<div class="card hist">
+  <div class="hist-head">
+    <h2>🕘 ประวัติถาม-ตอบ</h2>
+    {% if history %}
+    <form method="post" action="/ask/clear" onsubmit="return confirm('ลบประวัติถาม-ตอบทั้งหมด?')">
+      <button type="submit" class="hist-clear">🗑️ ล้าง</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if history %}
+    {% for h in history %}
+    <button type="button" class="hist-item" data-q="{{ h.q }}" data-plant="{{ h.plant or '' }}"
+            title="คลิกเพื่อถามซ้ำ">
+      <div>
+        <span class="hist-q">{{ h.q }}</span>
+        {% if h.plant %}<span class="hist-plant">โรงงาน {{ h.plant }}</span>{% endif %}
+        <span class="hist-meta">{{ h.t }}{% if h.mock %} · MOCK{% endif %}</span>
+      </div>
+      <div class="hist-a">{{ h.text }}</div>
+      {% if h.citations %}
+      <div class="hist-cite">📎 {{ h.citations | join(', ') }}</div>
+      {% endif %}
+    </button>
+    {% endfor %}
+  {% else %}
+    <div class="hist-empty">ยังไม่มีประวัติ — ลองถามด้านซ้ายดู แล้วรายการจะมาโผล่ตรงนี้ (คลิกเพื่อถามซ้ำได้)</div>
+  {% endif %}
+</div>
+</aside>
+</div><!-- /asklayout -->
 
 <script>
+// ── กดพูดถาม (push-to-talk) + มิเตอร์ระดับเสียงจริง ─────────────────
+// กด 🎙️ = เริ่มอัด (แท่งมิเตอร์ขยับตามเสียงเข้าไมค์จริง + จับเวลา)
+// กด ⏹️ = หยุด -> ส่งไป /transcribe (Whisper) -> เติมช่องคำถาม
+const N_BARS = 28;
+let mediaRecorder = null, chunks = [], stream = null;
+let audioCtx = null, analyser = null, rafId = null, timerId = null, startedAt = 0;
+
+// สร้างแท่งมิเตอร์ครั้งเดียว
+(function initMeter() {
+  const m = document.getElementById('meter');
+  for (let i = 0; i < N_BARS; i++) m.appendChild(document.createElement('span')).className = 'bar';
+})();
+
+function drawMeter() {
+  const bars = document.querySelectorAll('#meter .bar');
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(buf);
+  const step = Math.floor(buf.length / N_BARS) || 1;
+  bars.forEach((bar, i) => {
+    const v = buf[i * step] / 255;               // 0..1 จากพลังงานเสียงจริง
+    bar.style.height = Math.max(8, v * 100) + '%';
+  });
+  rafId = requestAnimationFrame(drawMeter);
+}
+
+function tickTime() {
+  const s = Math.floor((Date.now() - startedAt) / 1000);
+  document.getElementById('recTime').textContent =
+    Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function stopMeter() {
+  cancelAnimationFrame(rafId);
+  clearInterval(timerId);
+  if (audioCtx) { audioCtx.close(); audioCtx = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }  // ปิดไมค์
+}
+
+async function toggleMic() {
+  const btn = document.getElementById('micBtn');
+  const bar = document.getElementById('recBar');
+  const hint = document.getElementById('micHint');
+
+  // กำลังอัด -> หยุด
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+
+  // เริ่มอัด
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    hint.textContent = '⚠️ เข้าถึงไมค์ไม่ได้ — อนุญาตไมโครโฟนในเบราว์เซอร์ก่อน';
+    return;
+  }
+
+  // มิเตอร์ระดับเสียงจริง (Web Audio)
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 128;
+  audioCtx.createMediaStreamSource(stream).connect(analyser);
+  drawMeter();
+
+  // จับเวลา
+  startedAt = Date.now();
+  document.getElementById('recTime').textContent = '0:00';
+  timerId = setInterval(tickTime, 250);
+
+  // อัดเสียง
+  chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  mediaRecorder.onstop = async () => {
+    stopMeter();
+    bar.classList.remove('on');
+    btn.classList.remove('rec');
+    btn.textContent = '🎙️';
+    hint.textContent = '⏳ กำลังถอดเสียง...';
+    const fd = new FormData();
+    fd.append('audio', new Blob(chunks, { type: 'audio/webm' }), 'q.webm');
+    try {
+      const res = await fetch('/transcribe', { method: 'POST', body: fd });
+      if (!res.ok) throw new Error('stt-failed');
+      const data = await res.json();
+      document.getElementById('q').value = data.text || '';
+      hint.textContent = data.is_mock
+        ? '⚠️ ต่อ Whisper ไม่ได้ (ข้อความตัวอย่าง) — ตรวจ/แก้ก่อนกดถาม'
+        : '✅ ถอดเสร็จ — ตรวจ/แก้ข้อความแล้วกดถาม';
+    } catch (e) {
+      hint.textContent = '⚠️ ถอดเสียงไม่สำเร็จ — พิมพ์คำถามแทนได้';
+    }
+  };
+  mediaRecorder.start();
+
+  bar.classList.add('on');
+  btn.classList.add('rec');
+  btn.textContent = '⏹️';
+  hint.textContent = '🔴 กำลังฟัง... พูดคำถามแล้วกด ⏹️ หยุด';
+}
+
 async function speak() {
   const btn = document.getElementById('ttsBtn');
   const hint = document.getElementById('ttsHint');
@@ -74,5 +276,15 @@ async function speak() {
     btn.textContent = label;
   }
 }
+
+// ── คลิกประวัติ -> เติมคำถาม+โรงงานเดิม แล้วถามซ้ำทันที ────────────
+document.querySelectorAll('.hist-item').forEach(el => {
+  el.addEventListener('click', () => {
+    document.getElementById('q').value = el.dataset.q || '';
+    const sel = document.querySelector('#askForm select[name="plant"]');
+    if (sel) sel.value = el.dataset.plant || '';
+    document.getElementById('askForm').submit();
+  });
+});
 </script>
 {% endblock %}

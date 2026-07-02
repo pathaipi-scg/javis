@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS — Maintenance Knowledge Pipeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16191C;
+    --ink-soft:#4A5057;
+    --concrete:#E5E6E1;
+    --panel:#FBFBF9;
+    --line:#C7C9C2;
+    --line-soft:#D9DAD3;
+    --amber:#E29317;        /* signal lamp — the one bold accent */
+    --amber-soft:#FBEBCF;
+    --cyan:#0E6E6B;         /* data / storage layer */
+    --cyan-soft:#D6EAE9;
+    --rust:#BD402A;         /* input markers only */
+    --rust-soft:#F4DDD7;
+    --shadow:0 1px 0 rgba(22,25,28,.04), 0 12px 30px -18px rgba(22,25,28,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"IBM Plex Sans Thai","Space Grotesk",system-ui,sans-serif;
+    background:
+      linear-gradient(transparent 0 calc(100% - 1px), var(--line-soft) calc(100% - 1px)) 0 0 / 100% 28px,
+      var(--concrete);
+    color:var(--ink);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    padding:0 0 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .mono{font-family:"IBM Plex Mono",monospace}
+
+  /* ---------- header ---------- */
+  header{padding:48px 0 36px;border-bottom:2px solid var(--ink)}
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft);
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);
+    box-shadow:0 0 0 0 rgba(226,147,23,.5);animation:pulse 2.4s infinite}
+  h1{
+    font-family:"Space Grotesk",sans-serif;font-weight:700;
+    font-size:clamp(34px,6vw,60px);line-height:1.02;letter-spacing:-.02em;
+    margin:18px 0 12px;
+  }
+  h1 .sub{display:block;color:var(--amber);font-size:.52em;font-weight:600;letter-spacing:-.01em}
+  .lede{font-size:17px;color:var(--ink-soft);max-width:60ch}
+  .meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+  .tag{
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:500;
+    padding:5px 11px;border:1px solid var(--line);border-radius:2px;
+    background:var(--panel);color:var(--ink-soft);letter-spacing:.02em;
+    display:inline-flex;align-items:center;gap:7px;
+  }
+  .tag b{color:var(--cyan);font-weight:600}
+  .tag.on{border-color:var(--cyan);background:var(--cyan-soft);color:#0a4a48}
+
+  /* ---------- section scaffolding ---------- */
+  section{padding:54px 0 0}
+  .shead{display:flex;align-items:baseline;gap:16px;margin-bottom:26px}
+  .shead .no{
+    font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;
+    color:var(--amber);border:1.5px solid var(--amber);border-radius:2px;
+    padding:3px 8px;line-height:1;
+  }
+  .shead h2{
+    font-family:"Space Grotesk",sans-serif;font-weight:600;
+    font-size:clamp(22px,3.4vw,30px);letter-spacing:-.01em;
+  }
+  .shead .th{color:var(--ink-soft);font-weight:400;font-size:.62em;margin-left:4px}
+
+  /* ---------- pipeline (signature) ---------- */
+  .pipe{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    box-shadow:var(--shadow);padding:30px 26px 26px;overflow:hidden}
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:0;position:relative}
+  .rail{position:absolute;top:30px;left:6%;right:6%;height:2px;background:var(--line);z-index:0}
+  .rail .fill{position:absolute;inset:0;background:var(--amber);width:0;
+    transform-origin:left;animation:draw 1.4s .2s ease forwards}
+  .stage{position:relative;z-index:1;padding:0 12px;text-align:left}
+  .stage .node{
+    width:20px;height:20px;border-radius:50%;background:var(--panel);
+    border:2px solid var(--amber);margin-bottom:18px;position:relative;
+  }
+  .stage .node::after{content:"";position:absolute;inset:4px;border-radius:50%;
+    background:var(--amber);opacity:0;animation:lamp .5s forwards}
+  .stage:nth-child(2) .node::after{animation-delay:.4s}
+  .stage:nth-child(3) .node::after{animation-delay:.7s}
+  .stage:nth-child(4) .node::after{animation-delay:1s}
+  .stage:nth-child(5) .node::after{animation-delay:1.3s}
+  .stage .k{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+    letter-spacing:.16em;color:var(--ink-soft);text-transform:uppercase}
+  .stage h3{font-family:"Space Grotesk",sans-serif;font-size:18px;font-weight:600;margin:2px 0 4px}
+  .stage .h3th{font-size:12.5px;color:var(--ink-soft);margin-bottom:12px}
+  .chips{display:flex;flex-direction:column;gap:6px}
+  .chip{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink);
+    background:var(--concrete);border:1px solid var(--line-soft);border-radius:2px;
+    padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .loop{display:flex;align-items:center;gap:8px;margin-top:22px;padding-top:16px;
+    border-top:1px dashed var(--line);font-size:12.5px;color:var(--ink-soft)}
+  .loop .lp{font-family:"IBM Plex Mono",monospace;color:var(--cyan);font-weight:600}
+
+  /* ---------- io grids ---------- */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    padding:18px 18px 16px;box-shadow:var(--shadow);position:relative;
+    transition:transform .18s ease, box-shadow .18s ease}
+  .card:hover{transform:translateY(-3px);box-shadow:0 18px 36px -20px rgba(22,25,28,.4)}
+  .card .lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
+    letter-spacing:.14em;text-transform:uppercase;display:inline-block;
+    padding:3px 8px;border-radius:2px;margin-bottom:12px}
+  .in .lbl{background:var(--rust-soft);color:var(--rust)}
+  .out .lbl{background:var(--amber-soft);color:#9a630b}
+  .card h4{font-family:"Space Grotesk",sans-serif;font-size:17px;font-weight:600;margin-bottom:3px}
+  .card .h4th{font-size:13px;color:var(--ink-soft);margin-bottom:11px}
+  .card p{font-size:13.5px;color:var(--ink-soft);margin-bottom:10px}
+  .card .pipefrom{font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+    color:var(--cyan);border-top:1px solid var(--line-soft);padding-top:9px;
+    display:flex;gap:6px;align-items:center}
+  .card .pipefrom span{color:var(--ink-soft)}
+
+  /* ---------- data structure ---------- */
+  .ds{display:grid;grid-template-columns:1.05fr .95fr;gap:18px;align-items:start}
+  .codecard{background:#14181B;border-radius:5px;overflow:hidden;box-shadow:var(--shadow)}
+  .codecard .bar{display:flex;align-items:center;gap:8px;padding:11px 15px;
+    background:#1d2226;border-bottom:1px solid #2b3136}
+  .codecard .bar .fn{font-family:"IBM Plex Mono",monospace;font-size:12px;color:#aeb6bb;margin-left:6px}
+  .codecard .bar i{width:11px;height:11px;border-radius:50%;display:inline-block;background:#39414a}
+  .codecard pre{margin:0;padding:18px 18px 20px;overflow-x:auto;
+    font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.75;color:#d7dde1}
+  .codecard .fm{color:#5b646b}            /* delimiters / comments */
+  .codecard .key{color:#E2A437}           /* yaml keys */
+  .codecard .str{color:#7fcf8e}           /* values */
+  .codecard .num{color:#6fb9e8}           /* numbers */
+  .codecard .h{color:#5fc4c0;font-weight:600} /* md headers */
+
+  .fields{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    box-shadow:var(--shadow);overflow:hidden}
+  .fields table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .fields th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;text-align:left;color:var(--ink-soft);
+    padding:11px 14px;background:var(--concrete);border-bottom:1px solid var(--line)}
+  .fields td{padding:9px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  .fields tr:last-child td{border-bottom:none}
+  .fields td.f{font-family:"IBM Plex Mono",monospace;color:var(--cyan);font-weight:500;white-space:nowrap}
+  .fields td.t{color:var(--ink-soft)}
+
+  .triad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+  .store{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    padding:16px 16px 14px;box-shadow:var(--shadow);border-top:3px solid var(--cyan)}
+  .store .nm{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--ink)}
+  .store .role{font-size:12.5px;color:var(--ink-soft);margin-top:5px}
+  .store .badge{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.06em;
+    color:var(--cyan);margin-top:10px;display:inline-block}
+
+  /* ---------- footer ---------- */
+  footer{margin-top:60px;padding-top:22px;border-top:2px solid var(--ink);
+    display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-soft)}
+  footer b{color:var(--ink)}
+
+  /* ---------- reveal ---------- */
+  .reveal{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+  .reveal.show{opacity:1;transform:none}
+
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(226,147,23,.5)}70%{box-shadow:0 0 0 7px rgba(226,147,23,0)}100%{box-shadow:0 0 0 0 rgba(226,147,23,0)}}
+  @keyframes draw{to{width:100%}}
+  @keyframes lamp{to{opacity:1}}
+
+  @media (max-width:780px){
+    .flow{grid-template-columns:1fr;gap:0}
+    .rail{display:none}
+    .stage{padding:0 0 0 30px;border-left:2px solid var(--line);margin-left:9px;padding-bottom:22px}
+    .stage:last-child{border-left:2px solid transparent;padding-bottom:0}
+    .stage .node{position:absolute;left:-11px;margin-bottom:0}
+    .stage h3{margin-top:-4px}
+    .ds{grid-template-columns:1fr}
+    .triad{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .rail .fill{width:100%}.stage .node::after{opacity:1}
+    .reveal{opacity:1;transform:none}
+  }
+  :focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow"><span class="dot"></span>SCG ROOFING · SMART FACTORY · JARVIS KM</div>
+    <h1>Maintenance Knowledge Pipeline
+      <span class="sub">เสียง · รูป · ข้อความ → คลังความรู้ที่ถาม-ตอบด้วยเสียงได้</span>
+    </h1>
+    <p class="lede">ระบบจัดการความรู้สำหรับงานแก้ปัญหาเครื่องจักร เก็บข้อมูลจาก Morning Meeting
+      และหน้างาน แล้วตอบคำถามวิศวกรด้วยเสียงผ่าน RAG บน LLM ที่รันภายในองค์กรทั้งหมด</p>
+    <div class="meta">
+      <span class="tag on">● ON-PREM</span>
+      <span class="tag">LLM <b>Qwen 3</b> · Ollama</span>
+      <span class="tag">EMBED <b>bge-m3</b> · FAISS</span>
+      <span class="tag">STT <b>Whisper</b> th-TH</span>
+      <span class="tag">TTS <b>pyttsx3 / edge</b></span>
+    </div>
+  </header>
+
+  <!-- PIPELINE -->
+  <section>
+    <div class="shead"><span class="no">PIPE</span><h2>Pipeline<span class="th">ภาพรวมการไหลของข้อมูล</span></h2></div>
+    <div class="pipe reveal">
+      <div class="flow">
+        <div class="rail"><div class="fill"></div></div>
+
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">01 · capture</div>
+          <h3>Capture</h3><div class="h3th">รับเข้า</div>
+          <div class="chips">
+            <div class="chip">audio · meeting</div>
+            <div class="chip">image · fault</div>
+            <div class="chip">text · note</div>
+            <div class="chip">quick voice</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">02 · understand</div>
+          <h3>Understand</h3><div class="h3th">แปลง + สกัดข้อมูล</div>
+          <div class="chips">
+            <div class="chip">STT (Whisper)</div>
+            <div class="chip">Vision / OCR</div>
+            <div class="chip">LLM structuring</div>
+            <div class="chip">auto-tag category</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">03 · store</div>
+          <h3>Store</h3><div class="h3th">จัดเก็บความรู้</div>
+          <div class="chips">
+            <div class="chip">.md vault</div>
+            <div class="chip">SQL metadata</div>
+            <div class="chip">FAISS vectors</div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">04 · serve</div>
+          <h3>Serve</h3><div class="h3th">ใช้งาน</div>
+          <div class="chips">
+            <div class="chip">voice answer 🔊</div>
+            <div class="chip">bubble chart</div>
+            <div class="chip">semantic search</div>
+            <div class="chip">JARVIS Q&amp;A · RAG</div>
+          </div>
+        </div>
+      </div>
+      <div class="loop"><span class="lp">↻ loop</span> เคสใหม่ที่ถูกบันทึก (และคำตอบที่ยืนยันแล้ว) จะถูกใส่กลับเข้า vault — คลังฉลาดขึ้นเองโดยไม่ต้อง re-train</div>
+    </div>
+  </section>
+
+  <!-- INPUT -->
+  <section>
+    <div class="shead"><span class="no">IN</span><h2>Input<span class="th">รับข้อมูลเข้าได้กี่แบบ</span></h2></div>
+    <div class="grid">
+      <div class="card in reveal">
+        <span class="lbl">audio</span>
+        <h4>Meeting recording</h4><div class="h4th">ไฟล์เสียงประชุมเช้า</div>
+        <p>อัดเสียง Morning Meeting (.wav / .mp3) ทั้งไฟล์ ถอดเป็นข้อความไทย</p>
+        <div class="pipefrom">→ <span>Whisper STT (th-TH)</span></div>
+      </div>
+      <div class="card in reveal">
+        <span class="lbl">image</span>
+        <h4>Fault photo</h4><div class="h4th">รูปหน้างาน / จอ error</div>
+        <p>ถ่ายรูปอาการเสีย ป้ายอะไหล่ หรือหน้าจอแสดงรหัส error (.jpg / .png)</p>
+        <div class="pipefrom">→ <span>Qwen-VL / OCR</span></div>
+      </div>
+      <div class="card in reveal">
+        <span class="lbl">text</span>
+        <h4>Manual note</h4><div class="h4th">พิมพ์ข้อความเอง</div>
+        <p>วิศวกรพิมพ์บันทึกเคสตรง ๆ ลงฟอร์ม กรณีไม่มีไฟล์เสียง/รูป</p>
+        <div class="pipefrom">→ <span>direct ingest</span></div>
+      </div>
+      <div class="card in reveal">
+        <span class="lbl">quick voice</span>
+        <h4>Short dictation</h4><div class="h4th">พูดสั้น ๆ บันทึกไว</div>
+        <p>กดอัดพูดสั้น ๆ หน้างาน เพื่อหยอดข้อมูลเข้าระบบแบบเร็ว</p>
+        <div class="pipefrom">→ <span>STT → text</span></div>
+      </div>
+      <div class="card in reveal">
+        <span class="lbl">voice query</span>
+        <h4>Spoken question</h4><div class="h4th">ถามด้วยเสียง (runtime)</div>
+        <p>ปลุกด้วยคำว่า “Jarvis” แล้วถามเป็นภาษาไทย เพื่อค้นคำตอบจากคลัง</p>
+        <div class="pipefrom">→ <span>STT → RAG query</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OUTPUT -->
+  <section>
+    <div class="shead"><span class="no">OUT</span><h2>Output<span class="th">ระบบให้ผลลัพธ์อะไรกลับมา</span></h2></div>
+    <div class="grid">
+      <div class="card out reveal">
+        <span class="lbl">voice 🔊</span>
+        <h4>Spoken answer (TH)</h4><div class="h4th">ตอบกลับเป็นเสียงไทย</div>
+        <p>อ่านคำตอบออกเสียง สั้น กระชับ พูดได้ — pyttsx3 (offline) หรือ edge neural</p>
+        <div class="pipefrom">← <span>TTS engine</span></div>
+      </div>
+      <div class="card out reveal">
+        <span class="lbl">text</span>
+        <h4>Answer + citation</h4><div class="h4th">คำตอบ + อ้างอิงเคส</div>
+        <p>ข้อความคำตอบพร้อมแนบ case_id ที่เป็นแหล่งที่มา ให้กดเปิดตรวจสอบได้</p>
+        <div class="pipefrom">← <span>LLM (RAG)</span></div>
+      </div>
+      <div class="card out reveal">
+        <span class="lbl">chart</span>
+        <h4>Bubble chart</h4><div class="h4th">หัวข้อที่เกิดบ่อย + วิธีแก้</div>
+        <p>ฟองยิ่งใหญ่ = ปัญหากลุ่มนั้นเกิดบ่อย คลิกดูได้ว่าถูกแก้ด้วยอะไรบ้าง</p>
+        <div class="pipefrom">← <span>analytics · GROUP BY category</span></div>
+      </div>
+      <div class="card out reveal">
+        <span class="lbl">search</span>
+        <h4>Case results</h4><div class="h4th">ผลค้นหาเคสเก่า</div>
+        <p>ค้นแบบ semantic + keyword เจอเคสใกล้เคียง แม้พิมพ์คนละคำ</p>
+        <div class="pipefrom">← <span>FAISS similarity</span></div>
+      </div>
+      <div class="card out reveal">
+        <span class="lbl">.md</span>
+        <h4>Stored case</h4><div class="h4th">บันทึกเป็นไฟล์ความรู้</div>
+        <p>เคสใหม่ถูกเขียนเป็น .md เข้า vault (เปิดแก้ใน Obsidian ได้) แล้ว index ต่อ</p>
+        <div class="pipefrom">← <span>vault + reindex</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DATA STRUCTURE -->
+  <section>
+    <div class="shead"><span class="no">DS</span><h2>Data structure<span class="th">โครงสร้างข้อมูล 1 เคส</span></h2></div>
+    <div class="ds">
+      <div class="codecard reveal">
+        <div class="bar"><i></i><i></i><i></i><span class="fn">knowledge_vault/cases/MTN-2026-0142.md</span></div>
+<pre><span class="fm">---</span>
+<span class="key">case_id</span>: <span class="str">MTN-2026-0142</span>
+<span class="key">date</span>: <span class="num">2026-06-28</span>
+<span class="key">source</span>: <span class="str">morning_meeting</span>
+<span class="key">plant</span>: <span class="str">CB</span>   <span class="key">line</span>: <span class="str">Line 2</span>
+<span class="key">machine</span>: <span class="str">Forming Press</span>
+<span class="key">component</span>: <span class="str">Hydraulic valve V-203</span>
+<span class="key">category</span>: <span class="str">hydraulic</span>
+<span class="key">severity</span>: <span class="str">high</span>   <span class="key">status</span>: <span class="str">resolved</span>
+<span class="key">downtime_min</span>: <span class="num">45</span>
+<span class="key">parts_used</span>: <span class="str">seal kit x1</span>
+<span class="key">tags</span>: <span class="str">[hydraulic, pressure-drop, valve]</span>
+<span class="fm">---</span>
+
+<span class="h"># อาการ (Symptom)</span>
+แรงดันไฮดรอลิกตกเป็นระยะ เครื่องหยุดกลางรอบ
+
+<span class="h"># สาเหตุ (Root cause)</span>
+ซีลในวาล์ว V-203 เสื่อมและรั่ว
+
+<span class="h"># วิธีแก้ (Solution)</span>
+เปลี่ยนชุดซีล + ไล่ลมออกจากระบบ
+
+<span class="h"># ผลลัพธ์ (Result)</span>
+แรงดันคงที่ ใช้เวลาซ่อม 45 นาที</pre>
+      </div>
+
+      <div class="fields reveal">
+        <table>
+          <thead><tr><th>Field</th><th>ใช้ทำอะไร</th></tr></thead>
+          <tbody>
+            <tr><td class="f">case_id</td><td class="t">คีย์อ้างอิง · ใช้ citation ตอน Q&amp;A</td></tr>
+            <tr><td class="f">date / source</td><td class="t">timeline · มาจากช่องทางไหน</td></tr>
+            <tr><td class="f">plant / line / machine</td><td class="t">filter ข้าม plant (CB/SB1-1/LP)</td></tr>
+            <tr><td class="f">component</td><td class="t">เจาะลงอะไหล่/จุดที่เสีย</td></tr>
+            <tr><td class="f">category</td><td class="t">→ ขนาด bubble = ความถี่</td></tr>
+            <tr><td class="f">severity / status</td><td class="t">จัดลำดับความสำคัญ</td></tr>
+            <tr><td class="f">downtime_min</td><td class="t">วิเคราะห์ต้นทุน/เวลาเสีย</td></tr>
+            <tr><td class="f">tags</td><td class="t">ค้นหา + จัดกลุ่มย่อย</td></tr>
+            <tr><td class="f">body §</td><td class="t">อาการ · สาเหตุ · วิธีแก้ · ผลลัพธ์</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="triad">
+      <div class="store reveal">
+        <div class="nm">.md vault</div>
+        <div class="role">ตัวจริงของความรู้ คนอ่านได้ แก้ใน Obsidian ได้ ผูกเคสด้วย [[wikilink]]</div>
+        <div class="badge">human-readable</div>
+      </div>
+      <div class="store reveal">
+        <div class="nm">SQL Server</div>
+        <div class="role">เก็บ metadata (frontmatter) ไว้ aggregate ความถี่ ป้อน Bubble Chart</div>
+        <div class="badge">structured / fast filter</div>
+      </div>
+      <div class="store reveal">
+        <div class="nm">FAISS index</div>
+        <div class="role">embedding ของเนื้อเคส (bge-m3) สำหรับ semantic search + RAG retrieval</div>
+        <div class="badge">vectors · on-prem</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>JARVIS — Maintenance KM · <b>SCG Roofing Smart Factory</b></div>
+    <div>data residency: <b>on-prem</b> · retrieve → augment → generate · v1</div>
+  </footer>
+
+</div>
+
+<script>
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('show'); io.unobserve(e.target);} });
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach((el,i)=>{
+    el.style.transitionDelay = (Math.min(i,6)*40)+'ms';
+    io.observe(el);
+  });
+</script>
+</body>
+</html>

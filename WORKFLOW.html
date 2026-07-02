@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS — Demo Workflow (ระบบที่รันจริง)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16191C;
+    --ink-soft:#4A5057;
+    --concrete:#E5E6E1;
+    --panel:#FBFBF9;
+    --line:#C7C9C2;
+    --line-soft:#D9DAD3;
+    --amber:#E29317;        /* signal lamp — accent */
+    --amber-soft:#FBEBCF;
+    --cyan:#0E6E6B;         /* data / storage layer */
+    --cyan-soft:#D6EAE9;
+    --rust:#BD402A;         /* input markers */
+    --rust-soft:#F4DDD7;
+    --teal:#4a9d9c;         /* JARVIS app theme */
+    --shadow:0 1px 0 rgba(22,25,28,.04), 0 12px 30px -18px rgba(22,25,28,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"IBM Plex Sans Thai","Space Grotesk",system-ui,sans-serif;
+    background:
+      linear-gradient(transparent 0 calc(100% - 1px), var(--line-soft) calc(100% - 1px)) 0 0 / 100% 28px,
+      var(--concrete);
+    color:var(--ink);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    padding:0 0 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .mono{font-family:"IBM Plex Mono",monospace}
+
+  /* header */
+  header{padding:48px 0 36px;border-bottom:2px solid var(--ink)}
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;
+    letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft);
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);
+    box-shadow:0 0 0 0 rgba(226,147,23,.5);animation:pulse 2.4s infinite}
+  h1{
+    font-family:"Space Grotesk",sans-serif;font-weight:700;
+    font-size:clamp(32px,5.4vw,54px);line-height:1.03;letter-spacing:-.02em;
+    margin:18px 0 12px;
+  }
+  h1 .sub{display:block;color:var(--amber);font-size:.5em;font-weight:600;letter-spacing:-.01em}
+  .lede{font-size:16.5px;color:var(--ink-soft);max-width:64ch}
+  .lede b{color:var(--ink)}
+  .meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+  .tag{
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:500;
+    padding:5px 11px;border:1px solid var(--line);border-radius:2px;
+    background:var(--panel);color:var(--ink-soft);letter-spacing:.02em;
+    display:inline-flex;align-items:center;gap:7px;
+  }
+  .tag b{color:var(--cyan);font-weight:600}
+  .tag.on{border-color:var(--cyan);background:var(--cyan-soft);color:#0a4a48}
+
+  /* section scaffolding */
+  section{padding:54px 0 0}
+  .shead{display:flex;align-items:baseline;gap:16px;margin-bottom:26px}
+  .shead .no{
+    font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;
+    color:var(--amber);border:1.5px solid var(--amber);border-radius:2px;
+    padding:3px 8px;line-height:1;
+  }
+  .shead h2{
+    font-family:"Space Grotesk",sans-serif;font-weight:600;
+    font-size:clamp(22px,3.4vw,30px);letter-spacing:-.01em;
+  }
+  .shead .th{color:var(--ink-soft);font-weight:400;font-size:.62em;margin-left:4px}
+
+  /* pipeline lane */
+  .pipe{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    box-shadow:var(--shadow);padding:26px 26px 24px;overflow:hidden;margin-bottom:18px}
+  .lane{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .lane .rt{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+    letter-spacing:.06em;padding:4px 9px;border-radius:2px;background:var(--concrete);
+    border:1px solid var(--line-soft);color:var(--ink-soft)}
+  .lane h3{font-family:"Space Grotesk",sans-serif;font-size:18px;font-weight:600}
+  .lane .thh{font-size:13px;color:var(--ink-soft)}
+  .lane.a .rt{background:var(--rust-soft);color:var(--rust);border-color:#e6bcb2}
+  .lane.b .rt{background:var(--cyan-soft);color:#0a4a48;border-color:#a9d3d1}
+
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:0;position:relative}
+  .rail{position:absolute;top:10px;left:6%;right:6%;height:2px;background:var(--line);z-index:0}
+  .rail .fill{position:absolute;inset:0;background:var(--amber);width:0;
+    transform-origin:left;animation:draw 1.4s .2s ease forwards}
+  .stage{position:relative;z-index:1;padding:0 12px;text-align:left}
+  .stage .node{
+    width:20px;height:20px;border-radius:50%;background:var(--panel);
+    border:2px solid var(--amber);margin-bottom:16px;position:relative;
+  }
+  .stage .node::after{content:"";position:absolute;inset:4px;border-radius:50%;
+    background:var(--amber);opacity:0;animation:lamp .5s forwards}
+  .stage:nth-child(2) .node::after{animation-delay:.4s}
+  .stage:nth-child(3) .node::after{animation-delay:.7s}
+  .stage:nth-child(4) .node::after{animation-delay:1s}
+  .stage:nth-child(5) .node::after{animation-delay:1.3s}
+  .stage .k{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+    letter-spacing:.16em;color:var(--ink-soft);text-transform:uppercase}
+  .stage h4{font-family:"Space Grotesk",sans-serif;font-size:16.5px;font-weight:600;margin:2px 0 4px}
+  .stage .h4th{font-size:12px;color:var(--ink-soft);margin-bottom:12px}
+  .chips{display:flex;flex-direction:column;gap:6px}
+  .chip{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink);
+    background:var(--concrete);border:1px solid var(--line-soft);border-radius:2px;
+    padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .loop{display:flex;align-items:center;gap:8px;margin-top:20px;padding-top:15px;
+    border-top:1px dashed var(--line);font-size:12.5px;color:var(--ink-soft)}
+  .loop .lp{font-family:"IBM Plex Mono",monospace;color:var(--cyan);font-weight:600}
+
+  /* route cards */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    padding:16px 18px 15px;box-shadow:var(--shadow);position:relative;
+    transition:transform .18s ease, box-shadow .18s ease}
+  .card:hover{transform:translateY(-3px);box-shadow:0 18px 36px -20px rgba(22,25,28,.4)}
+  .card .lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
+    letter-spacing:.08em;display:inline-block;padding:3px 8px;border-radius:2px;margin-bottom:11px}
+  .m-get .lbl{background:var(--cyan-soft);color:#0a4a48}
+  .m-post .lbl{background:var(--amber-soft);color:#9a630b}
+  .card h4{font-family:"Space Grotesk",sans-serif;font-size:16px;font-weight:600;margin-bottom:3px}
+  .card .h4th{font-size:12.5px;color:var(--ink-soft);margin-bottom:9px}
+  .card p{font-size:13px;color:var(--ink-soft);margin-bottom:9px}
+  .card .pipefrom{font-family:"IBM Plex Mono",monospace;font-size:11px;
+    color:var(--cyan);border-top:1px solid var(--line-soft);padding-top:8px;
+    display:flex;gap:6px;align-items:center}
+  .card .pipefrom span{color:var(--ink-soft)}
+
+  /* data structure */
+  .ds{display:grid;grid-template-columns:1.05fr .95fr;gap:18px;align-items:start}
+  .codecard{background:#14181B;border-radius:5px;overflow:hidden;box-shadow:var(--shadow)}
+  .codecard .bar{display:flex;align-items:center;gap:8px;padding:11px 15px;
+    background:#1d2226;border-bottom:1px solid #2b3136}
+  .codecard .bar .fn{font-family:"IBM Plex Mono",monospace;font-size:12px;color:#aeb6bb;margin-left:6px}
+  .codecard .bar i{width:11px;height:11px;border-radius:50%;display:inline-block;background:#39414a}
+  .codecard pre{margin:0;padding:18px 18px 20px;overflow-x:auto;
+    font-family:"IBM Plex Mono",monospace;font-size:12.5px;line-height:1.7;color:#d7dde1}
+  .codecard .fm{color:#5b646b}
+  .codecard .key{color:#E2A437}
+  .codecard .str{color:#7fcf8e}
+  .codecard .num{color:#6fb9e8}
+  .codecard .h{color:#5fc4c0;font-weight:600}
+
+  .fields{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    box-shadow:var(--shadow);overflow:hidden}
+  .fields table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .fields th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;text-align:left;color:var(--ink-soft);
+    padding:11px 14px;background:var(--concrete);border-bottom:1px solid var(--line)}
+  .fields td{padding:9px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  .fields tr:last-child td{border-bottom:none}
+  .fields td.f{font-family:"IBM Plex Mono",monospace;color:var(--cyan);font-weight:500;white-space:nowrap}
+  .fields td.t{color:var(--ink-soft)}
+
+  /* vault tree */
+  .tree{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    box-shadow:var(--shadow);padding:18px 20px;font-family:"IBM Plex Mono",monospace;
+    font-size:12.5px;line-height:1.9;color:var(--ink-soft);margin-top:18px;overflow-x:auto}
+  .tree b{color:var(--cyan);font-weight:600}
+  .tree .c{color:var(--ink)}
+  .tree .note{color:#9aa}
+
+  /* stack triad */
+  .triad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+  .store{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    padding:16px 16px 14px;box-shadow:var(--shadow);border-top:3px solid var(--cyan)}
+  .store .nm{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--ink)}
+  .store .role{font-size:12.5px;color:var(--ink-soft);margin-top:5px}
+  .store .badge{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.06em;
+    color:var(--cyan);margin-top:10px;display:inline-block}
+
+  /* callout */
+  .callout{margin-top:18px;background:var(--amber-soft);border:1px solid #f0d090;
+    border-radius:4px;padding:14px 16px;font-size:13.5px;color:#7a5205}
+  .callout b{color:#5e3f04}
+
+  footer{margin-top:60px;padding-top:22px;border-top:2px solid var(--ink);
+    display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;
+    font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-soft)}
+  footer b{color:var(--ink)}
+
+  .reveal{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
+  .reveal.show{opacity:1;transform:none}
+
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(226,147,23,.5)}70%{box-shadow:0 0 0 7px rgba(226,147,23,0)}100%{box-shadow:0 0 0 0 rgba(226,147,23,0)}}
+  @keyframes draw{to{width:100%}}
+  @keyframes lamp{to{opacity:1}}
+
+  @media (max-width:780px){
+    .flow{grid-template-columns:1fr;gap:0}
+    .rail{display:none}
+    .stage{padding:0 0 0 30px;border-left:2px solid var(--line);margin-left:9px;padding-bottom:20px}
+    .stage:last-child{border-left:2px solid transparent;padding-bottom:0}
+    .stage .node{position:absolute;left:-11px;margin-bottom:0}
+    .stage h4{margin-top:-4px}
+    .ds{grid-template-columns:1fr}
+    .triad{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+    .rail .fill{width:100%}.stage .node::after{opacity:1}
+    .reveal{opacity:1;transform:none}
+  }
+  :focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow"><span class="dot"></span>JARVIS KM · DEMO · ระบบที่รันได้จริง</div>
+    <h1>Maintenance KB — Workflow
+      <span class="sub">เสียง · ฟอร์ม → เคสใน Obsidian → ถาม-ตอบ RAG พร้อมเสียง JARVIS</span>
+    </h1>
+    <p class="lede">ภาพการไหลของ<b>เดโมที่รันจริง</b> (Flask → ย้ายเป็น FastAPI แล้ว) — บันทึกเคสซ่อมบำรุงเป็นไฟล์
+      .md แบบจัดชั้นตามโรงงาน/ฝ่าย แล้วตอบคำถามช่างด้วย RAG บน LLM ที่รันในองค์กรทั้งหมด
+      พร้อมอ่านคำตอบเป็นเสียง</p>
+    <div class="meta">
+      <span class="tag on">● ON-PREM</span>
+      <span class="tag">WEB <b>FastAPI</b> · Jinja2</span>
+      <span class="tag">LLM <b>Typhoon2 8B</b> · Ollama</span>
+      <span class="tag">EMBED <b>bge-m3</b> · numpy cosine</span>
+      <span class="tag">STT <b>faster-whisper</b> th-TH</span>
+      <span class="tag">TTS <b>edge-tts</b> th-TH-Niwat</span>
+      <span class="tag">STORE <b>Obsidian .md</b></span>
+    </div>
+  </header>
+
+  <!-- WORKFLOW -->
+  <section>
+    <div class="shead"><span class="no">FLOW</span><h2>Workflow<span class="th">2 ขา — บันทึก และ ถาม-ตอบ</span></h2></div>
+
+    <!-- lane A: capture -->
+    <div class="pipe reveal">
+      <div class="lane a">
+        <span class="rt">/ (POST)</span>
+        <div><h3>ขาเข้า — บันทึกเคส</h3><div class="thh">เสียง + ฟอร์ม tag-first → เขียนลง vault</div></div>
+      </div>
+      <div class="flow">
+        <div class="rail"><div class="fill"></div></div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">01 · capture</div>
+          <h4>Capture</h4><div class="h4th">รับเข้า</div>
+          <div class="chips">
+            <div class="chip">audio (ไม่บังคับ)</div>
+            <div class="chip">ฟอร์ม: plant · dept</div>
+            <div class="chip">tags · อาการ · วิธีแก้</div>
+            <div class="chip">image (แนบเฉยๆ)</div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">02 · transcribe</div>
+          <h4>Transcribe</h4><div class="h4th">ถอดเสียง (ถ้าแนบ)</div>
+          <div class="chips">
+            <div class="chip">faster-whisper</div>
+            <div class="chip">th-TH · VAD</div>
+            <div class="chip">→ เติมช่อง "อาการ"</div>
+            <div class="chip">mock ถ้าต่อไม่ได้</div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">03 · save</div>
+          <h4>Save</h4><div class="h4th">เขียนเป็น .md</div>
+          <div class="chips">
+            <div class="chip">cases/&lt;plant&gt;/</div>
+            <div class="chip">&lt;dept&gt;/MTN-….md</div>
+            <div class="chip">frontmatter + 4 หัวข้อ</div>
+            <div class="chip">attachments/ (รูป)</div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">04 · index</div>
+          <h4>Index</h4><div class="h4th">ทำเวกเตอร์</div>
+          <div class="chips">
+            <div class="chip">ล้าง cache</div>
+            <div class="chip">bge-m3 embed</div>
+            <div class="chip">numpy (in-memory)</div>
+            <div class="chip">lazy · รอบค้นถัดไป</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- lane B: serve -->
+    <div class="pipe reveal">
+      <div class="lane b">
+        <span class="rt">/ask · /search</span>
+        <div><h3>ขาออก — ถาม JARVIS (RAG)</h3><div class="thh">ค้น → สรุป → อ่านออกเสียง</div></div>
+      </div>
+      <div class="flow">
+        <div class="rail"><div class="fill"></div></div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">01 · query</div>
+          <h4>Query</h4><div class="h4th">คำถาม + ขอบเขต</div>
+          <div class="chips">
+            <div class="chip">พิมพ์คำถาม</div>
+            <div class="chip">เลือกโรงงาน</div>
+            <div class="chip">↳ isolation</div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">02 · retrieve</div>
+          <h4>Retrieve</h4><div class="h4th">ค้นความหมาย</div>
+          <div class="chips">
+            <div class="chip">bge-m3 embed query</div>
+            <div class="chip">cosine top-k</div>
+            <div class="chip">กรองตาม plant</div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">03 · generate</div>
+          <h4>Generate</h4><div class="h4th">สรุปคำตอบ</div>
+          <div class="chips">
+            <div class="chip">Typhoon2 8B</div>
+            <div class="chip">ตอบจากเคสเท่านั้น</div>
+            <div class="chip">+ อ้างอิง case_id</div>
+          </div>
+        </div>
+        <div class="stage">
+          <div class="node"></div>
+          <div class="k">04 · speak</div>
+          <h4>Speak</h4><div class="h4th">อ่านเป็นเสียง</div>
+          <div class="chips">
+            <div class="chip">edge-tts</div>
+            <div class="chip">th-TH-Niwat (JARVIS)</div>
+            <div class="chip">fallback: เบราว์เซอร์</div>
+          </div>
+        </div>
+      </div>
+      <div class="loop"><span class="lp">↻ loop</span> เคสใหม่ที่บันทึกจะถูก index อัตโนมัติรอบค้นถัดไป — คลังฉลาดขึ้นเองโดยไม่ต้อง re-train</div>
+    </div>
+  </section>
+
+  <!-- ROUTES -->
+  <section>
+    <div class="shead"><span class="no">API</span><h2>Routes<span class="th">endpoint ที่ FastAPI เปิดไว้</span></h2></div>
+    <div class="grid">
+      <div class="card m-post reveal">
+        <span class="lbl">GET · POST /</span>
+        <h4>ป้อนข้อมูล</h4><div class="h4th">ฟอร์มเพิ่มเคส (tag-first)</div>
+        <p>รับฟอร์ม + เสียง/รูป → ถอดเสียง → เขียนเคส .md แบบจัดชั้น</p>
+        <div class="pipefrom">→ <span>transcribe · rag.save_case_and_reindex</span></div>
+      </div>
+      <div class="card m-post reveal">
+        <span class="lbl">GET · POST /stt</span>
+        <h4>ทดสอบ STT</h4><div class="h4th">วัดความแม่น Whisper</div>
+        <p>อัปคลิป → ถอดข้อความ → Typhoon สรุป (หน้าเทสต์ ไม่บันทึกเคส)</p>
+        <div class="pipefrom">→ <span>transcribe · llm.extract_machines</span></div>
+      </div>
+      <div class="card m-get reveal">
+        <span class="lbl">GET /search</span>
+        <h4>ค้นเคส</h4><div class="h4th">semantic search</div>
+        <p>bge-m3 + cosine หาเคสใกล้เคียง กรองตามโรงงานได้</p>
+        <div class="pipefrom">→ <span>rag.search(q, plant)</span></div>
+      </div>
+      <div class="card m-get reveal">
+        <span class="lbl">GET /dashboard</span>
+        <h4>Dashboard</h4><div class="h4th">สรุปตัวเลข</div>
+        <p>นับเคส/จัดกลุ่มตาม category จาก metadata จริงใน vault</p>
+        <div class="pipefrom">→ <span>rag.stats()</span></div>
+      </div>
+      <div class="card m-post reveal">
+        <span class="lbl">GET · POST /ask</span>
+        <h4>ถาม JARVIS</h4><div class="h4th">RAG Q&amp;A</div>
+        <p>ค้นเคสที่เกี่ยว → Typhoon สรุป + citations (กรองตามโรงงาน)</p>
+        <div class="pipefrom">→ <span>rag.answer(q, plant)</span></div>
+      </div>
+      <div class="card m-post reveal">
+        <span class="lbl">POST /tts</span>
+        <h4>เสียง JARVIS</h4><div class="h4th">อ่านคำตอบเป็นเสียง</div>
+        <p>edge-tts → mp3; ถ้าต่อไม่ได้คืน 503 ให้เว็บ fallback เสียงเบราว์เซอร์</p>
+        <div class="pipefrom">→ <span>tts.synthesize(text)</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DATA STRUCTURE -->
+  <section>
+    <div class="shead"><span class="no">DS</span><h2>Data structure<span class="th">1 เคส = 1 ไฟล์ .md</span></h2></div>
+    <div class="ds">
+      <div class="codecard reveal">
+        <div class="bar"><i></i><i></i><i></i><span class="fn">Vault/cases/A/production/MTN-2026-0001.md</span></div>
+<pre><span class="fm">---</span>
+<span class="key">case_id</span>: <span class="str">MTN-2026-0001</span>
+<span class="key">date</span>: <span class="num">2026-07-01</span>
+<span class="key">source</span>: <span class="str">morning_meeting</span>
+<span class="key">plant</span>: <span class="str">A</span>   <span class="key">department</span>: <span class="str">production</span>
+<span class="key">line</span>: <span class="str">Line 2</span>
+<span class="key">machine</span>: <span class="str">Forming Press A</span>
+<span class="key">component</span>: <span class="str">Hydraulic valve V-203</span>
+<span class="key">category</span>: <span class="str">hydraulic</span>
+<span class="key">severity</span>: <span class="str">high</span>   <span class="key">status</span>: <span class="str">resolved</span>
+<span class="key">downtime_min</span>: <span class="num">45</span>
+<span class="key">tags</span>: <span class="str">[hydraulic, pressure-drop]</span>
+<span class="fm">---</span>
+
+<span class="h"># อาการ (Symptom)</span>
+แรงดันไฮดรอลิกตกเป็นระยะ เครื่องหยุดกลางรอบ
+
+<span class="h"># สาเหตุ (Root cause)</span>
+ซีลวาล์ว V-203 เสื่อม มีลมค้างในระบบ
+
+<span class="h"># วิธีแก้ (Solution)</span>
+เปลี่ยนชุดซีล V-203 แล้วไล่ลมออกจากระบบ
+
+<span class="h"># ผลลัพธ์ (Result)</span>
+แรงดันคงที่ เดินเครื่องต่อได้ปกติ</pre>
+      </div>
+
+      <div class="fields reveal">
+        <table>
+          <thead><tr><th>Field</th><th>ใช้ทำอะไร</th></tr></thead>
+          <tbody>
+            <tr><td class="f">case_id</td><td class="t">คีย์อ้างอิง · ใช้ citation ตอน Q&amp;A</td></tr>
+            <tr><td class="f">plant / department</td><td class="t">→ โฟลเดอร์ที่เก็บ + isolation ตอนถาม</td></tr>
+            <tr><td class="f">line / machine</td><td class="t">ระบุเครื่อง/จุดที่เสีย</td></tr>
+            <tr><td class="f">component</td><td class="t">เจาะลงอะไหล่/ชิ้นส่วน</td></tr>
+            <tr><td class="f">category</td><td class="t">= tag แรก → จัดกลุ่ม Dashboard</td></tr>
+            <tr><td class="f">severity / status</td><td class="t">จัดลำดับความสำคัญ</td></tr>
+            <tr><td class="f">downtime_min</td><td class="t">วิเคราะห์เวลาเสีย</td></tr>
+            <tr><td class="f">tags</td><td class="t">ค้นหา + จัดกลุ่มย่อย</td></tr>
+            <tr><td class="f">body §</td><td class="t">อาการ · สาเหตุ · วิธีแก้ · ผลลัพธ์</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="tree reveal">
+<span class="note"># โครงใน Obsidian vault — จัดชั้นตามโรงงาน/ฝ่าย</span>
+Vault/
+├─ <b>cases/</b>
+│  ├─ <b>A/</b>              <span class="note">โรงงาน A</span>
+│  │  ├─ <b>production/</b>  <span class="note">ฝ่าย</span>
+│  │  │  └─ <span class="c">MTN-2026-0001.md</span>
+│  │  └─ <b>maintenance/</b>
+│  │     └─ <span class="c">MTN-2026-0003.md</span>
+│  └─ <b>b/</b>
+│     └─ <b>etc/</b>
+│        └─ <span class="c">MTN-2026-0002.md</span>
+├─ <b>attachments/</b>       <span class="note">รูปที่แนบ (![[…]])</span>
+└─ .obsidian/            <span class="note">ตั้งค่า Obsidian</span>
+    </div>
+  </section>
+
+  <!-- STACK -->
+  <section>
+    <div class="shead"><span class="no">STK</span><h2>Stack<span class="th">ที่รันจริงในเดโม (on-prem)</span></h2></div>
+    <div class="triad">
+      <div class="store reveal">
+        <div class="nm">Obsidian .md vault</div>
+        <div class="role">ตัวจริงของความรู้ คนอ่าน/แก้ได้ · จัดชั้น cases/&lt;plant&gt;/&lt;dept&gt;/ · ผูกเคสด้วย [[wikilink]]</div>
+        <div class="badge">human-readable · no DB</div>
+      </div>
+      <div class="store reveal">
+        <div class="nm">bge-m3 + numpy</div>
+        <div class="role">embedding เนื้อเคส (ผ่าน Ollama) เก็บใน memory ค้นด้วย cosine · vault เล็กยังไม่ต้อง FAISS</div>
+        <div class="badge">semantic · in-memory</div>
+      </div>
+      <div class="store reveal">
+        <div class="nm">Typhoon2 8B · Ollama</div>
+        <div class="role">llama3.1-typhoon2-8b (ไทย) สรุปคำตอบ RAG + edge-tts อ่านเป็นเสียงชายไทย</div>
+        <div class="badge">generate + voice</div>
+      </div>
+    </div>
+
+    <div class="callout reveal">
+      <b>Graceful degradation:</b> ทุกชั้น (STT · embeddings · LLM · TTS) ออกแบบให้ทำงานต่อได้แม้ backend ไม่พร้อม —
+      ถ้าต่อไม่ติดจะคืนข้อมูล <b>mock</b> (ขึ้นต้น <span class="mono">[MOCK]</span>) หรือ fallback เสียงเบราว์เซอร์ เพื่อให้เดโมเดินจบ end-to-end เสมอ
+    </div>
+  </section>
+
+  <footer>
+    <div>JARVIS — Maintenance KM · <b>Demo Workflow</b></div>
+    <div>on-prem · retrieve → augment → generate → speak · FastAPI</div>
+  </footer>
+
+</div>
+
+<script>
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('show'); io.unobserve(e.target);} });
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach((el,i)=>{
+    el.style.transitionDelay = (Math.min(i,6)*40)+'ms';
+    io.observe(el);
+  });
+</script>
+</body>
+</html>

@@ -15,10 +15,10 @@ from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
-import os, sys, tempfile, re, time, shutil
+import os, sys, tempfile, re, time, shutil, json
 
 from transcribe import transcribe_audio, WHISPER_MODEL, WHISPER_DEVICE, STT_BASE_URL
 import rag, llm, tts, vault
@@ -42,6 +42,33 @@ def _save_upload(upload) -> str:
     with open(path, "wb") as out:
         shutil.copyfileobj(upload.file, out)
     return path
+
+
+# ประวัติถาม-ตอบหน้า /ask — เก็บเป็น JSONL (1 บรรทัด = 1 คำถาม) รอด restart
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ask_history.jsonl")
+HISTORY_SHOW = 15  # จำนวนที่โชว์บนหน้า (ล่าสุดก่อน)
+
+
+def _log_ask(q, plant, answer, mock):
+    """append คำถาม+คำตอบลง log (พังเงียบ ไม่ให้กระทบการตอบ)"""
+    try:
+        rec = {"t": time.strftime("%Y-%m-%d %H:%M"), "q": q, "plant": plant,
+               "text": answer.get("text", ""), "citations": answer.get("citations", []),
+               "mock": mock}
+        with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _load_ask_history(n=HISTORY_SHOW):
+    """อ่าน log -> list ล่าสุดก่อน (ไม่เกิน n)"""
+    try:
+        with open(HISTORY_FILE, encoding="utf-8") as f:
+            recs = [json.loads(x) for x in f if x.strip()]
+        return list(reversed(recs))[:n]
+    except Exception:
+        return []
 
 
 # ช่องในฟอร์มที่ prefill กลับได้ (ตอนกด "ยกเลิก/กลับไปแก้" จากหน้าพรีวิว)
@@ -224,9 +251,23 @@ async def ask(request: Request):
                         "วิธีแก้คือเปลี่ยนชุดซีลแล้วไล่ลมออกจากระบบ ใช้เวลาซ่อมราว 45 นาที",
                 "citations": ["MTN-2026-0142", "MTN-2026-0098"],
             }
+        _log_ask(q, plant, answer, used_mock)
     return templates.TemplateResponse(request, "ask.html",
                                       {"active": "ask", "q": q, "answer": answer, "mock": used_mock,
-                                       "plant": plant, "plants": rag.all_plants()})
+                                       "plant": plant, "plants": rag.all_plants(),
+                                       "history": _load_ask_history()})
+
+
+@app.post("/ask/clear")
+async def ask_clear():
+    """ลบประวัติถาม-ตอบทั้งหมด (ลบไฟล์ log) แล้วกลับไปหน้า /ask"""
+    try:
+        os.remove(HISTORY_FILE)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    return RedirectResponse("/ask", status_code=303)
 
 
 @app.post("/tts")
@@ -237,6 +278,22 @@ async def tts_endpoint(request: Request):
     if audio is None:
         return Response(status_code=503)
     return Response(content=audio, media_type="audio/mpeg")
+
+
+@app.post("/transcribe")
+async def transcribe_endpoint(request: Request):
+    """ถอดเสียงคำถาม (push-to-talk) -> คืน {text} เป็น JSON
+    ใช้ที่หน้า /ask: กดพูด -> อัดเสียงในเบราว์เซอร์ -> ส่งมาถอด -> เติมช่องคำถามให้
+    ถอดด้วย Whisper ตัวเดียวกับ pipeline (local/remote) — ตก mock ถ้าต่อ backend ไม่ได้"""
+    f = await request.form()
+    audio = f.get("audio")
+    if not (audio and getattr(audio, "filename", "")):
+        return JSONResponse({"error": "no audio"}, status_code=400)
+    apath = _save_upload(audio)
+    text = await run_in_threadpool(transcribe_audio, apath)
+    # transcribe_audio ใส่ timestamp "[00.5s] ..." ต่อบรรทัด — คำถามสั้นๆ ไม่ต้องการ เลยตัดทิ้ง
+    clean = re.sub(r"^\[[0-9.]+s\]\s*", "", text, flags=re.M).replace("\n", " ").strip()
+    return {"text": clean, "is_mock": text.lstrip().startswith("[MOCK")}
 
 
 @app.api_route("/stt", methods=["GET", "POST"], response_class=HTMLResponse)

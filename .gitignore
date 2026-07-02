@@ -12,6 +12,7 @@ env/
 
 # ไฟล์อัป/ชั่วคราว
 demo/media/
+demo/ask_history.jsonl
 *.wav
 *.mp3
 *.m4a
