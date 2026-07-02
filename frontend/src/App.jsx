@@ -3,10 +3,13 @@ import Navbar from './components/Navbar.jsx'
 import Hero from './components/Hero.jsx'
 import AskDemo from './components/AskDemo.jsx'
 import CasePage from './components/CasePage.jsx'
+import SearchPage from './components/SearchPage.jsx'
+import DashboardPage from './components/DashboardPage.jsx'
 import Features from './components/Features.jsx'
 import Footer from './components/Footer.jsx'
 
-// routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router): #/ = landing, #/ask = ถาม, #/case = ป้อนเคส
+// routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router)
+// #/ = landing, #/ask = ถาม, #/case = ป้อนเคส, #/search = ค้นเคส, #/dashboard = สรุป
 function useRoute() {
   const [hash, setHash] = useState(window.location.hash)
   useEffect(() => {
@@ -16,6 +19,8 @@ function useRoute() {
   }, [])
   if (hash.startsWith('#/ask')) return 'ask'
   if (hash.startsWith('#/case')) return 'case'
+  if (hash.startsWith('#/search')) return 'search'
+  if (hash.startsWith('#/dashboard')) return 'dashboard'
   return 'home'
 }
 
@@ -43,6 +48,8 @@ export default function App() {
       )}
       {route === 'ask' && <AskDemo />}
       {route === 'case' && <CasePage />}
+      {route === 'search' && <SearchPage />}
+      {route === 'dashboard' && <DashboardPage />}
       <Footer />
     </div>
   )

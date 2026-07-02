@@ -12,7 +12,8 @@ export default function Navbar() {
         <a href="#/">หน้าแรก</a>
         <a href="#/ask">ถาม JARVIS <span className="badge">RAG</span></a>
         <a href="#/case">ป้อนเคส</a>
-        <a href="#features">ความสามารถ</a>
+        <a href="#/search">ค้นเคส</a>
+        <a href="#/dashboard">Dashboard</a>
       </div>
       <div className="nav-actions">
         <a href="#/ask" className="btn-grad">เริ่มใช้งาน</a>

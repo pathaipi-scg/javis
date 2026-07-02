@@ -399,6 +399,33 @@ async def api_case_preview(request: Request):
             "image_name": image_name or "", "image_path": image_path or ""}
 
 
+@app.get("/api/search")
+async def api_search(q: str = "", plant: str = ""):
+    """ค้นเคส semantic (bge-m3) — เวอร์ชัน JSON ของ /search"""
+    q = q.strip()
+    plant = plant.strip()
+    if not q:
+        return {"results": [], "tag_facet": [], "mock": False}
+    results = await run_in_threadpool(rag.search, q, 8, plant or None)
+    mock = results is None
+    if mock:
+        results = _MOCK_SEARCH
+    facet = {}
+    for r in results:
+        for t in r["tags"]:
+            facet[t] = facet.get(t, 0) + 1
+    tag_facet = sorted(facet.items(), key=lambda x: -x[1])
+    return {"results": results, "tag_facet": tag_facet, "mock": mock}
+
+
+@app.get("/api/dashboard")
+async def api_dashboard():
+    """ตัวเลขสรุป + จำนวนตามหมวด — เวอร์ชัน JSON ของ /dashboard"""
+    s = await run_in_threadpool(rag.stats)
+    stats, categories = s if s else _MOCK_STATS
+    return {"stats": stats, "categories": categories, "mock": s is None}
+
+
 class CaseSaveIn(BaseModel):
     md: str
     image_path: str = ""
