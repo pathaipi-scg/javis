@@ -62,6 +62,25 @@ async def _warm_whisper():
     threading.Thread(target=_load, daemon=True).start()
 
 
+@app.on_event("startup")
+async def _warm_llm():
+    """โหลด LLM (Typhoon/Qwen) + bge-m3 เข้า GPU ตั้งแต่เปิด — คำถามแรกไม่เจอ cold โหลดโมเดล
+    ยิง ollama เปล่าๆ ครั้งเดียว (thread แยก ไม่บล็อก start); ต่อไม่ติดก็ปล่อย lazy-load ตอนถามแรก"""
+    import threading
+    def _load():
+        try:
+            from llm import QWEN_MODEL
+            client = rag._get_client()
+            client.chat.completions.create(          # อุ่น LLM: gen 1 token พอให้โหลดน้ำหนักเข้า GPU
+                model=QWEN_MODEL, max_tokens=1,
+                messages=[{"role": "user", "content": "hi /no_think"}])
+            rag._embed(["warm"])                     # อุ่น bge-m3 (embedding)
+            print(f"[warm] LLM ({QWEN_MODEL}) + bge พร้อมใช้ (โหลดเข้า GPU แล้ว)")
+        except Exception as e:
+            print(f"[warm] โหลด LLM/bge ล่วงหน้าไม่ได้ ({type(e).__name__}) — จะโหลดตอนถามแรกแทน")
+    threading.Thread(target=_load, daemon=True).start()
+
+
 def _save_upload(upload) -> str:
     """เซฟไฟล์ที่อัปโหลด (Starlette UploadFile) ลง temp แล้วคืน path"""
     path = os.path.join(UPLOAD, upload.filename)
