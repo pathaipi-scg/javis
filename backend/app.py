@@ -323,12 +323,14 @@ async def api_case_save(body: CaseSaveIn):
 @app.post("/tts")
 @app.post("/api/tts")
 async def tts_endpoint(request: Request):
-    """อ่านคำตอบเป็นเสียง JARVIS (mp3). ถ้า edge-tts ใช้ไม่ได้ -> 503 ให้ฝั่งเว็บ fallback"""
+    """อ่านคำตอบเป็นเสียง JARVIS. ถ้า TTS ใช้ไม่ได้ -> 503 ให้ฝั่งเว็บ fallback
+    synthesize คืน (bytes, media_type) — windows=audio/wav, edge=audio/mpeg"""
     f = await request.form()
-    audio = await tts.synthesize(f.get("text", ""))
-    if audio is None:
+    result = await tts.synthesize(f.get("text", ""))
+    if result is None:
         return Response(status_code=503)
-    return Response(content=audio, media_type="audio/mpeg")
+    audio, media_type = result
+    return Response(content=audio, media_type=media_type)
 
 
 @app.post("/transcribe")
