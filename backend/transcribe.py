@@ -70,16 +70,35 @@ def _transcribe_remote(base_url, path):
     return resp.json()["transcript"]
 
 
+import threading
+
+_model = None            # cache โมเดลไว้ในหน่วยความจำ — โหลด large-v3 เข้า GPU ครั้งเดียว ใช้ซ้ำ
+_model_lock = threading.Lock()   # กัน warm-up (thread เบื้องหลัง) ชนกับ request แรก -> โหลดซ้อน
+
+
+def _get_model():
+    """คืน WhisperModel ตัวเดียวใช้ซ้ำ (สร้างใหม่ทุก request = โหลดโมเดลซ้ำ ~3s เสียเปล่า)"""
+    global _model
+    if _model is None:
+        with _model_lock:
+            if _model is None:   # เช็คซ้ำในล็อก — thread อื่นอาจโหลดเสร็จระหว่างรอ
+                from faster_whisper import WhisperModel
+                compute = "float16" if WHISPER_DEVICE == "cuda" else "int8"
+                _model = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=compute)
+    return _model
+
+
 def _transcribe_local(path):
     """ถอดในเครื่องด้วย faster-whisper; ถ้าไม่มี -> mock"""
     try:
-        from faster_whisper import WhisperModel
-        compute = "float16" if WHISPER_DEVICE == "cuda" else "int8"
-        model = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=compute)
+        model = _get_model()
         lang = None if WHISPER_LANG.lower() == "auto" else WHISPER_LANG
         segments, _ = model.transcribe(
             path, language=lang, vad_filter=True,
-            initial_prompt="ประชุมซ่อมบำรุงเครื่องจักร มอเตอร์ ปั๊ม สายพาน แบริ่ง",
+            initial_prompt="ประชุมซ่อมบำรุงเครื่องจักร มอเตอร์ ปั๊มน้ำ สายพานลำเลียง "
+                           "แบริ่ง ลูกปืน ไฮดรอลิก วาล์ว เซนเซอร์ ลัดวงจร เขม่า "
+                           "แรงดันตก ความร้อน สั่น รั่วซึม forming press "
+                           "อาการ สาเหตุ วิธีแก้ เปลี่ยนอะไหล่",
             condition_on_previous_text=False,   # กันวนซ้ำ (hallucination loop)
             compression_ratio_threshold=2.4,    # ตัด segment ที่ดูเป็นขยะ
             no_speech_threshold=0.6,             # ข้ามช่วงไม่มีคนพูด

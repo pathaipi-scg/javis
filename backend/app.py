@@ -47,6 +47,21 @@ app.add_middleware(
 UPLOAD = tempfile.gettempdir()
 
 
+@app.on_event("startup")
+async def _warm_whisper():
+    """โหลด Whisper เข้า GPU ตั้งแต่เปิด (background thread) — user คนแรกไม่เจอ cold ~4s
+    ทำใน thread แยกเพื่อไม่บล็อกการ start server; ถ้าโหลดไม่ได้ก็ปล่อย (จะ lazy-load ตอน request แรกแทน)"""
+    import threading
+    from transcribe import _get_model
+    def _load():
+        try:
+            _get_model()
+            print("[warm] Whisper พร้อมใช้ (โหลดเข้า GPU แล้ว)")
+        except Exception as e:
+            print(f"[warm] โหลด Whisper ล่วงหน้าไม่ได้ ({type(e).__name__}) — จะโหลดตอน request แรกแทน")
+    threading.Thread(target=_load, daemon=True).start()
+
+
 def _save_upload(upload) -> str:
     """เซฟไฟล์ที่อัปโหลด (Starlette UploadFile) ลง temp แล้วคืน path"""
     path = os.path.join(UPLOAD, upload.filename)
@@ -327,10 +342,12 @@ async def transcribe_endpoint(request: Request):
     if not (audio and getattr(audio, "filename", "")):
         return JSONResponse({"error": "no audio"}, status_code=400)
     apath = _save_upload(audio)
+    t0 = time.perf_counter()
     text = await run_in_threadpool(transcribe_audio, apath)
+    seconds = round(time.perf_counter() - t0, 1)   # เวลาที่ใช้ถอดจริง
     # transcribe_audio ใส่ timestamp "[00.5s] ..." ต่อบรรทัด — คำถามสั้นๆ ไม่ต้องการ เลยตัดทิ้ง
     clean = re.sub(r"^\[[0-9.]+s\]\s*", "", text, flags=re.M).replace("\n", " ").strip()
-    return {"text": clean, "is_mock": text.lstrip().startswith("[MOCK")}
+    return {"text": clean, "seconds": seconds, "is_mock": text.lstrip().startswith("[MOCK")}
 
 
 # ─────────────────────────────────────────────────────────────

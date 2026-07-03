@@ -136,9 +136,10 @@ export default function AskDemo() {
         if (!res.ok) throw new Error('stt-failed')
         const data = await res.json()
         setQ(data.text || '')
+        const t = data.seconds != null ? ` (${data.seconds} วิ)` : ''
         setMicHint(data.is_mock
-          ? '⚠️ ต่อ Whisper ไม่ได้ (ข้อความตัวอย่าง) — ตรวจ/แก้ก่อนกดถาม'
-          : '✅ ถอดเสร็จ — ตรวจ/แก้ข้อความแล้วกดถาม')
+          ? `⚠️ ต่อ Whisper ไม่ได้ (ข้อความตัวอย่าง)${t} — ตรวจ/แก้ก่อนกดถาม`
+          : `✅ ถอดเสร็จใน ${data.seconds} วิ — ตรวจ/แก้ข้อความแล้วกดถาม`)
       } catch (e) {
         setMicHint('⚠️ ถอดเสียงไม่สำเร็จ — พิมพ์คำถามแทนได้')
       }
