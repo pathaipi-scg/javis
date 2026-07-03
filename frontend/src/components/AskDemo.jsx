@@ -241,6 +241,7 @@ export default function AskDemo() {
             <div className="who">
               <Logo size={13} /> JARVIS
               {answer.mock && <span className="mock-badge">MOCK — ต่อ RAG ไม่ติด</span>}
+              {answer.seconds != null && <span className="ask-time">⏱️ {answer.seconds} วิ</span>}
               <button type="button" className="ask-tts" onClick={speak} disabled={speaking}
                       title="ฟังคำตอบ (เสียง JARVIS)">
                 {speaking ? '⏳' : '🔊 ฟังคำตอบ'}

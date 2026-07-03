@@ -124,6 +124,7 @@ a { color: inherit; }
 .ask-plant:focus { border-color: rgba(120,140,255,.6); }
 .ask-plant option { background: #0a0d1c; color: #eef1fb; }
 .mock-badge { margin-left: 8px; font-size: 11px; font-weight: 600; color: #ffd27f; background: rgba(255,180,60,.14); border: 1px solid rgba(255,190,90,.35); border-radius: 999px; padding: 2px 9px; }
+.ask-time { margin-left: 8px; font-size: 11px; font-weight: 600; color: #9fb4ff; background: rgba(96,120,255,.12); border: 1px solid rgba(120,150,255,.3); border-radius: 999px; padding: 2px 9px; }
 .cites { margin-top: 10px; font-size: 13px; color: #a6aed0; }
 
 /* ---------- mic / push-to-talk ---------- */

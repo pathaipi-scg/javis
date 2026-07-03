@@ -154,7 +154,9 @@ async def api_ask(body: AskIn):
     if not q:
         return JSONResponse({"error": "no question"}, status_code=400)
     plant = body.plant.strip()
+    t0 = time.perf_counter()
     answer = await run_in_threadpool(rag.answer, q, 4, plant or None)
+    seconds = round(time.perf_counter() - t0, 1)   # เวลาที่ LLM ใช้ตอบ (ค้น + สร้างคำตอบ)
     mock = answer is None
     if mock:
         answer = {
@@ -163,7 +165,7 @@ async def api_ask(body: AskIn):
             "citations": ["MTN-2026-0142", "MTN-2026-0098"],
         }
     _log_ask(q, plant, answer, mock)
-    return {"answer": answer["text"], "citations": answer["citations"], "mock": mock}
+    return {"answer": answer["text"], "citations": answer["citations"], "mock": mock, "seconds": seconds}
 
 
 @app.get("/api/history")
