@@ -16,12 +16,14 @@ load_dotenv()
 
 VAULT_PATH  = os.getenv("VAULT_PATH", "").strip()
 EMBED_MODEL = os.getenv("EMBED_MODEL", "bge-m3")
-# คะแนน cosine ขั้นต่ำ (%) ที่ถือว่าเคส "เกี่ยว" กับคำถาม — ต่ำกว่านี้ = ขยะ ไม่นับ/ไม่ cite
-# วัดจริงกับ vault นี้ (bge-m3 ไทย):
-#   คำถามซ่อมบำรุง (แม้สั้น): top score 43-67  (แบริ่ง 43, เสียงดัง 47, มอเตอร์ 56)
-#   ทักทาย/คุยเล่น:          top score <=41   (สวัสดี 40, อากาศดี 41, ขอบคุณ 37)
-# 42 คั่นกลาง band -> กัน greeting ไม่ให้ลากเคสมา cite โดยไม่ตัดคำถามจริง
-REL_MIN = int(os.getenv("RAG_REL_MIN", "42"))
+# เกณฑ์ cosine ขั้นต่ำ (%) แบบ 2 ระดับ (hybrid router — เลือกตามว่าคำถามมี "ศัพท์ช่าง" ไหม):
+#   คำถามมีศัพท์ช่าง (มอเตอร์/แบริ่ง/รั่ว/ชื่อเครื่องใน vault ฯลฯ) -> เกณฑ์ต่ำ:
+#     คำถามอ้อมๆ ที่ cosine ไม่สูงก็ยังผ่านไปให้ LLM ตอบ (ลูกปืนมีเสียง=51, แบริ่ง=44)
+#   คำถามไม่มีศัพท์ช่าง (ทักทาย/คุยเล่น/เรื่องทั่วไป) -> เกณฑ์สูง:
+#     กันขาด เพราะพื้น cosine ของข้อความไทยไม่เกี่ยวกันก็แตะ ~40 ได้ (สวัสดี=42)
+# ตัวเช็คศัพท์เป็น string match ในเครื่อง 0ms — ไม่เพิ่มเวลาตอบ
+REL_MIN_DOMAIN = int(os.getenv("RAG_REL_MIN_DOMAIN", "35"))
+REL_MIN_OTHER  = int(os.getenv("RAG_REL_MIN", "48"))
 # คำที่บ่งว่า LLM ตอบว่า "ไม่พบ" -> ล้าง citation ทิ้ง (โมเดลเห็นเองว่า context ไม่เกี่ยว)
 _NOT_FOUND_RE = re.compile(r"ไม่พบ|ไม่มีเคส|ไม่ตรง|ไม่เกี่ยวข้อง|ข้อมูลไม่พอ|ไม่มีข้อมูล")
 # embeddings/LLM ใช้ Ollama ตัวเดียวกับ llm.py (OpenAI-compatible)
@@ -135,9 +137,14 @@ def _parse_case_file(path):
         downtime = int(re.sub(r"\D", "", fm.get("downtime_min", "0")) or 0)
     except Exception:
         downtime = 0
-    blob = (f"เครื่อง {machine} {component} โรงงาน {plant} ฝ่าย {department} "
-            f"หมวด {category} อาการ {symptom} "
-            f"สาเหตุ {cause} วิธีแก้ {solution} {' '.join(tags)}")
+    # ข้อความที่ใช้ embed: เอาเฉพาะ "เนื้อจริง" ของเคส — ห้ามใส่คำ template
+    # (เครื่อง/โรงงาน/ฝ่าย/หมวด/อาการ/สาเหตุ/วิธีแก้) เพราะคำพวกนี้ซ้ำทุกเคส
+    # ทำให้ query ไทยอะไรก็ตาม (รวมคำทักทาย) คล้ายทุกเคสขึ้น -> พื้น cosine สูง แยก band ยาก
+    blob = "\n".join(x for x in (
+        f"{machine} {component}".strip(),
+        f"{category} {' '.join(tags)}".strip(),
+        symptom, cause, solution,
+    ) if x and x.strip())
     return {
         "case_id":  fm.get("case_id", path.stem),
         "machine":  machine,
@@ -274,6 +281,32 @@ def search(query, k=8, plant=None):
         return None
 
 
+# คำช่างพื้นฐาน (นอกเหนือจากคีย์เวิร์ดใน _TAG_RULES) — บ่งว่าเป็นคำถามซ่อมบำรุง
+_DOMAIN_EXTRA = ["เครื่อง", "ซ่อม", "เสีย", "พัง", "อะไหล่", "เปลี่ยน", "สั่น", "เสียงดัง",
+                 "หยุดเดิน", "ทริป", "อุณหภูมิ", "หยด", "ตัน", "สึก", "ขาด", "หลวม", "คาลิเบรต"]
+
+
+def _domain_vocab():
+    """คลังศัพท์ช่างไว้เช็คว่าคำถาม in-domain ไหม: คีย์เวิร์ด tag + คำช่างพื้นฐาน
+    + ชื่อเครื่อง/อะไหล่/tag จริงจาก vault (คำ >=3 ตัวอักษร). cache ใน _CACHE ตาม index"""
+    if _CACHE.get("vocab") is not None:
+        return _CACHE["vocab"]
+    vocab = {kw for _, kws in _TAG_RULES for kw in kws} | set(_DOMAIN_EXTRA)
+    for c in load_cases():
+        for field in (c.get("machine", ""), c.get("component", "")):
+            vocab.update(w.casefold() for w in re.split(r"[\s\-_/]+", field) if len(w) >= 3)
+        vocab.update(t.casefold() for t in c.get("tags", []) if len(t) >= 3)
+    vocab = {w for w in vocab if w and w not in ("?",)}
+    _CACHE["vocab"] = vocab
+    return vocab
+
+
+def _rel_min_for(query):
+    """เลือกเกณฑ์ตามว่าคำถามมีศัพท์ช่างไหม (string match ล้วน — 0ms)"""
+    q = query.casefold()
+    return REL_MIN_DOMAIN if any(w in q for w in _domain_vocab()) else REL_MIN_OTHER
+
+
 def answer(query, k=4, plant=None):
     """RAG: ดึงเคสที่เกี่ยว -> Typhoon สรุป. คืน {text, citations} หรือ None
     plant: จำกัดขอบเขตให้ตอบจากเคสในโรงงานนั้นเท่านั้น"""
@@ -282,8 +315,9 @@ def answer(query, k=4, plant=None):
         if hits is None:
             return None                     # vault ว่าง/backend มีปัญหา -> ให้ app ตก mock
         # กรองเคสที่คะแนนต่ำเกินทิ้ง — semantic search คืน top-k เสมอแม้เกี่ยวน้อย
-        # ถ้าไม่กรอง เคสขยะจะหลุดเข้า context + โชว์เป็น citation ทั้งที่ LLM ตอบว่าไม่พบ
-        hits = [h for h in hits if h.get("score", 0) >= REL_MIN]
+        # เกณฑ์เลือกตามชนิดคำถาม (มีศัพท์ช่าง = ปล่อยผ่านง่าย, ไม่มี = คุมเข้ม)
+        rel_min = _rel_min_for(query)
+        hits = [h for h in hits if h.get("score", 0) >= rel_min]
         if not hits:
             # ไม่มีเคสที่เกี่ยวจริง -> ตอบชัดว่าไม่พบ ไม่แนบ citation
             where = f"โรงงาน {plant}" if plant else "ระบบ"
@@ -400,7 +434,7 @@ def save_case_and_reindex(fields, image_path=None, image_name=None):
     import vault
     status, case_id = vault.save_case(fields, image_src=image_path, image_name=image_name)
     if case_id:
-        _CACHE.update(key=None, cases=None, vecs=None)
+        _CACHE.update(key=None, cases=None, vecs=None, vocab=None)
     return status, case_id
 
 
@@ -409,5 +443,5 @@ def save_markdown_and_reindex(md, image_path=None, image_name=None):
     import vault
     status, case_id = vault.save_markdown(md, image_src=image_path, image_name=image_name)
     if case_id:
-        _CACHE.update(key=None, cases=None, vecs=None)
+        _CACHE.update(key=None, cases=None, vecs=None, vocab=None)
     return status, case_id
