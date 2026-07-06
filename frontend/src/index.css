@@ -326,13 +326,39 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .hud-status-text { font-family: 'Sora', monospace; font-size: 22px; letter-spacing: 5px; transition: color .45s ease; }
 .hud-sub { display: flex; align-items: center; gap: 10px; margin-top: 13px; font-size: 14.5px; color: #5c6f75; letter-spacing: 1px; }
 .hud-sub-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a4a50; }
-.hud-modes { display: flex; gap: 9px; margin-top: 40px; width: min(420px, 90vw); }
-.hud-mode-btn { flex: 1; text-align: center; padding: 11px 4px; border-radius: 12px; border: 1px solid; background: none; cursor: pointer; font-family: 'Sora', monospace; font-size: 11px; letter-spacing: 1.5px; transition: all .2s ease; }
-.hud-ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 30px; }
-.hud-cta { padding: 12px 22px; border-radius: 999px; border: 1px solid rgba(255,255,255,.16); color: #c7cde0; font-size: 14.5px; text-decoration: none; transition: background .15s, border-color .15s; }
+/* มิเตอร์คลื่นเสียงตอนอัด */
+.hud-meter-row { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+.hud-rectime { font-family: 'Sora', monospace; font-size: 14px; color: #35e0ea; letter-spacing: 1px; min-width: 42px; }
+.hud-meter { display: flex; align-items: center; gap: 3px; height: 34px; }
+.hud-meter .bar { width: 3px; height: 8%; border-radius: 2px; transition: height .06s linear; opacity: .85; }
+
+/* ปุ่มไมค์ใหญ่ */
+.hud-mic { display: inline-flex; align-items: center; gap: 10px; margin-top: 26px; padding: 14px 30px; border-radius: 999px; border: 1.5px solid; cursor: pointer; font-family: 'Anuphan', sans-serif; font-weight: 600; font-size: 15.5px; transition: transform .12s ease, background .2s ease, color .2s ease; }
+.hud-mic:hover { transform: translateY(-1px); }
+.hud-mic svg { width: 18px; height: 18px; }
+.hud-mic.rec { animation: jv-mic-pulse 1.3s ease-in-out infinite; }
+@keyframes jv-mic-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(53,224,234,.5); } 50% { box-shadow: 0 0 0 10px rgba(53,224,234,0); } }
+
+/* ชิปสถานะ (ไม่ใช่ปุ่มกด — สะท้อน mode) */
+.hud-modes { display: flex; gap: 9px; margin-top: 22px; width: min(420px, 90vw); }
+.hud-mode-chip { flex: 1; text-align: center; padding: 9px 4px; border-radius: 10px; border: 1px solid; font-family: 'Sora', monospace; font-size: 10.5px; letter-spacing: 1.5px; transition: all .25s ease; }
+
+/* กล่องคำตอบ */
+.hud-answer { margin-top: 26px; width: min(680px, 92vw); background: rgba(10,16,22,.72); border: 1px solid rgba(53,224,234,.22); border-radius: 14px; padding: 16px 18px; color: #dbe6ea; font-size: 15px; line-height: 1.65; backdrop-filter: blur(8px); animation: jv-fade-up .3s ease; }
+.hud-answer .who { display: flex; align-items: center; gap: 8px; font-family: 'Sora', sans-serif; font-weight: 600; font-size: 13px; color: #7ff2f6; margin-bottom: 9px; }
+.hud-answer .cites { margin-top: 10px; font-size: 12.5px; color: #8b96a3; }
+.hud-answer-err { border-color: rgba(255,120,120,.4); background: rgba(255,90,90,.1); color: #ffc9c9; }
+
+/* แถบพิมพ์ถาม */
+.hud-typebar { display: flex; gap: 8px; margin-top: 22px; width: min(560px, 92vw); }
+.hud-typebar input { flex: 1; background: rgba(10,16,22,.7); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 12px 15px; color: #eef1fb; font-family: 'Anuphan', sans-serif; font-size: 14.5px; outline: none; transition: border-color .15s; }
+.hud-typebar input:focus { border-color: rgba(53,224,234,.5); }
+.hud-typebar button { border: none; cursor: pointer; padding: 0 20px; border-radius: 12px; background: linear-gradient(135deg,#31d8dd,#3fe9a0); color: #04121a; font-weight: 700; font-family: 'Anuphan', sans-serif; font-size: 14.5px; transition: opacity .15s; }
+.hud-typebar button:disabled { opacity: .45; cursor: default; }
+
+.hud-ctas { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 26px; }
+.hud-cta { padding: 10px 20px; border-radius: 999px; border: 1px solid rgba(255,255,255,.16); color: #c7cde0; font-size: 13.5px; text-decoration: none; transition: background .15s, border-color .15s; }
 .hud-cta:hover { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.3); }
-.hud-cta-main { background: linear-gradient(135deg,#31d8dd,#3fe9a0); border: none; color: #04121a; font-weight: 700; box-shadow: 0 8px 26px rgba(49,216,221,.35); }
-.hud-cta-main:hover { background: linear-gradient(135deg,#31d8dd,#3fe9a0); filter: brightness(1.08); }
 
 /* ---------- Knowledge Graph (#/graph) ---------- */
 .gp { position: fixed; inset: 0; background: #05070b; color: #e8edf2; overflow: hidden; }
