@@ -16,6 +16,11 @@ load_dotenv()
 
 VAULT_PATH  = os.getenv("VAULT_PATH", "").strip()
 EMBED_MODEL = os.getenv("EMBED_MODEL", "bge-m3")
+# คะแนน cosine ขั้นต่ำ (%) ที่ถือว่าเคส "เกี่ยว" กับคำถาม — ต่ำกว่านี้ = ขยะ ไม่นับ/ไม่ cite
+# bge-m3 ไทย: เกี่ยวจริงมัก 45-70%, ไม่เกี่ยวมัก <35 -> 40 กันขยะโดยไม่ตัดของดี
+REL_MIN = int(os.getenv("RAG_REL_MIN", "40"))
+# คำที่บ่งว่า LLM ตอบว่า "ไม่พบ" -> ล้าง citation ทิ้ง (โมเดลเห็นเองว่า context ไม่เกี่ยว)
+_NOT_FOUND_RE = re.compile(r"ไม่พบ|ไม่มีเคส|ไม่ตรง|ไม่เกี่ยวข้อง|ข้อมูลไม่พอ|ไม่มีข้อมูล")
 # embeddings/LLM ใช้ Ollama ตัวเดียวกับ llm.py (OpenAI-compatible)
 QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "http://localhost:11434/v1")
 QWEN_API_KEY  = os.getenv("QWEN_API_KEY", "not-needed")
@@ -273,8 +278,11 @@ def answer(query, k=4, plant=None):
         hits = search(query, k=k, plant=plant)
         if hits is None:
             return None                     # vault ว่าง/backend มีปัญหา -> ให้ app ตก mock
+        # กรองเคสที่คะแนนต่ำเกินทิ้ง — semantic search คืน top-k เสมอแม้เกี่ยวน้อย
+        # ถ้าไม่กรอง เคสขยะจะหลุดเข้า context + โชว์เป็น citation ทั้งที่ LLM ตอบว่าไม่พบ
+        hits = [h for h in hits if h.get("score", 0) >= REL_MIN]
         if not hits:
-            # โรงงานนี้ไม่มีเคสที่เกี่ยว -> ตอบชัดว่าไม่พบ (ไม่ดึงข้ามโรงงาน ไม่ mock)
+            # ไม่มีเคสที่เกี่ยวจริง -> ตอบชัดว่าไม่พบ ไม่แนบ citation
             where = f"โรงงาน {plant}" if plant else "ระบบ"
             return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": []}
         from llm import QWEN_MODEL
@@ -297,7 +305,9 @@ def answer(query, k=4, plant=None):
             temperature=0.2,
         )
         text = resp.choices[0].message.content.strip()
-        return {"text": text, "citations": [h["case_id"] for h in hits]}
+        # ถ้า LLM ตอบว่าไม่พบ/ข้อมูลไม่พอ -> ไม่แนบ citation (กัน "ไม่พบ...แต่มีอ้างอิงเคส")
+        citations = [] if _NOT_FOUND_RE.search(text) else [h["case_id"] for h in hits]
+        return {"text": text, "citations": citations}
     except Exception as e:
         print(f"[RAG] answer ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ตก mock")
         return None
