@@ -290,6 +290,45 @@ async def api_dashboard():
     return {"stats": stats, "categories": categories, "mock": s is None}
 
 
+def _mock_graph():
+    """กราฟตัวอย่าง — โชว์ตอน vault ว่าง (โครงเดียวกับ rag.graph())"""
+    nodes, links = [], []
+    add = lambda i, t, b="": nodes.append({"id": i, "type": t, "body": b})
+    lk = lambda a, b: links.append({"source": a, "target": b})
+    add("CB", "plant", "โรงงาน CB"); add("SB1-1", "plant", "โรงงาน SB1-1")
+    for m, p in [("Forming-Press", "CB"), ("Sheet-Cutter", "CB"),
+                 ("Conveyor-A", "SB1-1"), ("Mixer", "SB1-1")]:
+        add(m, "machine", f"เครื่อง {m} @ {p}"); lk(m, p)
+    for c, m in [("V-203-Valve", "Forming-Press"), ("Cutting-Blade", "Sheet-Cutter"),
+                 ("Bearing-6204", "Conveyor-A"), ("Gearbox", "Mixer")]:
+        add(c, "component", f"อะไหล่ {c} ของ {m}"); lk(c, m)
+    for f in ["hydraulic", "blade-wear", "bearing"]:
+        add(f, "fault", f"ประเภทปัญหา: {f}")
+    add("Team-A", "team", "ทีมซ่อมบำรุง A"); add("Team-B", "team", "ทีมซ่อมบำรุง B")
+    for cid, m, c, f, t, body in [
+        ("MTN-2026-0142", "Forming-Press", "V-203-Valve", "hydraulic", "Team-A",
+         "อาการ: แรงดันไฮดรอลิกตก\nสาเหตุ: ซีลวาล์ว V-203 รั่ว\nวิธีแก้: เปลี่ยนชุดซีล + ไล่ลม"),
+        ("MTN-2026-0138", "Sheet-Cutter", "Cutting-Blade", "blade-wear", "Team-B",
+         "อาการ: ใบมีดสึกเร็ว\nวิธีแก้: เปลี่ยนใบใหม่ + ปรับ feed rate"),
+        ("MTN-2026-0131", "Conveyor-A", "Bearing-6204", "bearing", "Team-A",
+         "อาการ: แบริ่งมีเสียงดัง\nวิธีแก้: อัดจารบี + เปลี่ยนลูกปืน"),
+        ("MTN-2026-0125", "Mixer", "Gearbox", "bearing", "Team-B",
+         "อาการ: เกียร์ร้อนผิดปกติ\nวิธีแก้: เปลี่ยนน้ำมันเกียร์"),
+    ]:
+        add(cid, "case", body); lk(cid, m); lk(cid, c); lk(cid, f); lk(cid, t)
+    return {"nodes": nodes, "links": links}
+
+
+@app.get("/api/graph")
+async def api_graph():
+    """ข้อมูล knowledge graph จากเคสจริงใน vault — ให้หน้า #/graph วาด d3"""
+    g = await run_in_threadpool(rag.graph)
+    mock = g is None
+    if mock:
+        g = _mock_graph()
+    return {"nodes": g["nodes"], "links": g["links"], "mock": mock}
+
+
 @app.get("/api/stt-config")
 async def api_stt_config():
     """ค่าคอนฟิก STT (โมเดล/อุปกรณ์/remote) ให้หน้าทดสอบโชว์"""
@@ -386,6 +425,12 @@ FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 if os.path.isdir(os.path.join(FRONTEND_DIST, "assets")):
     app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")),
               name="spa-assets")
+
+    # ฟอนต์ self-host (public/fonts -> dist/fonts) — เสิร์ฟ woff2 จาก server เดียวกัน
+    # ไม่พึ่ง Google Fonts; ถ้าไม่ mount ตรงนี้ /fonts/*.woff2 จะ 404 บน :5000
+    _fonts_dir = os.path.join(FRONTEND_DIST, "fonts")
+    if os.path.isdir(_fonts_dir):
+        app.mount("/fonts", StaticFiles(directory=_fonts_dir), name="spa-fonts")
 
     @app.get("/", response_class=HTMLResponse)
     async def spa_root():

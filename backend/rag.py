@@ -134,6 +134,7 @@ def _parse_case_file(path):
         "case_id":  fm.get("case_id", path.stem),
         "machine":  machine,
         "symptom":  symptom or "(ไม่ระบุอาการ)",
+        "cause":    cause,
         "solution": solution or "(ไม่ระบุวิธีแก้)",
         "component": component or "-",
         "plant": plant,
@@ -319,6 +320,66 @@ def stats():
                   for t, n in sorted(facet.items(), key=lambda x: -x[1])]
     st = {"total": len(cases), "downtime": downtime, "machines": len(machines)}
     return st, categories
+
+
+def graph():
+    """สร้างข้อมูล knowledge graph จากเคสจริงใน vault สำหรับหน้า #/graph
+    โหนด: plant / machine / component / case / fault(category) / team(department)
+    คืน {nodes, links} หรือ None ถ้า vault ว่าง (ให้ app.py ตก mock)"""
+    cases = load_cases()
+    if not cases:
+        return None
+    nodes, links, seen = {}, [], set()
+
+    def add(nid, ntype, body=""):
+        if nid not in nodes:
+            nodes[nid] = {"id": nid, "type": ntype, "body": body}
+        return nid
+
+    def link(a, b):
+        if a != b and (a, b) not in seen and (b, a) not in seen:
+            seen.add((a, b))
+            links.append({"source": a, "target": b})
+
+    def ok(v):  # ค่าที่ใช้เป็นโหนดได้ (ตัดค่าว่าง/placeholder)
+        v = (v or "").strip()
+        return v if v and v not in ("?", "-", "_unsorted") else ""
+
+    for c in cases:
+        cid = c["case_id"]
+        body = "\n".join(x for x in (
+            f"อาการ: {c['symptom']}" if c.get("symptom") else "",
+            f"สาเหตุ: {c['cause']}" if c.get("cause") else "",
+            f"วิธีแก้: {c['solution']}" if c.get("solution") else "",
+        ) if x)
+        add(cid, "case", body)
+
+        plant = ok(c.get("plant"))
+        machine = ok(c.get("machine"))
+        component = ok(c.get("component"))
+        fault = ok(c.get("category")) or (c.get("tags") or [""])[0]
+        team = ok(c.get("department"))
+
+        if plant:
+            add(plant, "plant", f"โรงงาน {plant}")
+        if machine:
+            add(machine, "machine", f"เครื่อง {machine}" + (f" @ {plant}" if plant else ""))
+            link(cid, machine)
+            if plant:
+                link(machine, plant)
+        if component:
+            add(component, "component", f"อะไหล่/จุด {component}" + (f" ของ {machine}" if machine else ""))
+            link(cid, component)
+            if machine:
+                link(component, machine)
+        if fault:
+            add(fault, "fault", f"ประเภทปัญหา: {fault}")
+            link(cid, fault)
+        if team:
+            add(team, "team", f"ฝ่าย {team}")
+            link(cid, team)
+
+    return {"nodes": list(nodes.values()), "links": links}
 
 
 def save_case_and_reindex(fields, image_path=None, image_name=None):

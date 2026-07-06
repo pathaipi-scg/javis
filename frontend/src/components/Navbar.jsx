@@ -13,6 +13,7 @@ export default function Navbar() {
         <a href="#/ask">ถาม JARVIS <span className="badge">RAG</span></a>
         <a href="#/case">ป้อนเคส</a>
         <a href="#/search">ค้นเคส</a>
+        <a href="#/graph">Graph</a>
         <a href="#/stt">ทดสอบ STT</a>
         <a href="#/dashboard">Dashboard</a>
       </div>
