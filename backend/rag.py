@@ -307,9 +307,10 @@ def _rel_min_for(query):
     return REL_MIN_DOMAIN if any(w in q for w in _domain_vocab()) else REL_MIN_OTHER
 
 
-def answer(query, k=4, plant=None):
-    """RAG: ดึงเคสที่เกี่ยว -> Typhoon สรุป. คืน {text, citations} หรือ None
-    plant: จำกัดขอบเขตให้ตอบจากเคสในโรงงานนั้นเท่านั้น"""
+def answer(query, k=4, plant=None, model=None):
+    """RAG: ดึงเคสที่เกี่ยว -> LLM สรุป. คืน {text, citations} หรือ None
+    plant: จำกัดขอบเขตให้ตอบจากเคสในโรงงานนั้นเท่านั้น
+    model: ชื่อโมเดลที่ผู้ใช้เลือกหน้าเว็บ (ว่าง/None = ใช้ QWEN_MODEL ตาม .env)"""
     try:
         hits = search(query, k=k, plant=plant)
         if hits is None:
@@ -337,7 +338,7 @@ def answer(query, k=4, plant=None):
             f"เคสที่เกี่ยวข้อง:\n{ctx}\n\nคำถาม: {query}\n\nคำตอบ:"
         )
         resp = client.chat.completions.create(
-            model=QWEN_MODEL,
+            model=(model or "").strip() or QWEN_MODEL,   # โมเดลที่เลือกหน้าเว็บ ไม่งั้น default
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
         )

@@ -153,6 +153,26 @@ from pydantic import BaseModel
 class AskIn(BaseModel):
     question: str
     plant: str = ""      # จำกัดขอบเขตโรงงาน ("" = ทุกโรงงาน)
+    model: str = ""      # โมเดลที่เลือกหน้าเว็บ ("" = ใช้ default ตาม .env)
+
+
+# รายชื่อโมเดลให้ frontend ทำ dropdown — แยก local (Ollama) / api (คลาวด์ ยังไม่เปิด)
+# local: ค่า value = ชื่อโมเดลจริงที่ Ollama เสิร์ฟ (ส่งกลับมาใน /api/ask -> rag.answer)
+def _model_options():
+    from llm import QWEN_MODEL
+    return {
+        "local": [
+            {"id": QWEN_MODEL, "label": "Typhoon 8B (ไทย)"},
+        ],
+        "api": [],   # ยังไม่เปิด — เว้นไว้ให้ UI โชว์หัวข้อ (เพิ่มทีหลังตอนต่อ API คลาวด์)
+        "default": QWEN_MODEL,
+    }
+
+
+@app.get("/api/models")
+async def api_models():
+    """รายชื่อโมเดลที่เลือกได้ (local/api) — ให้หน้าแรกทำ dropdown เลือกโมเดล"""
+    return _model_options()
 
 
 @app.get("/api/health")
@@ -174,7 +194,7 @@ async def api_ask(body: AskIn):
         return JSONResponse({"error": "no question"}, status_code=400)
     plant = body.plant.strip()
     t0 = time.perf_counter()
-    answer = await run_in_threadpool(rag.answer, q, 4, plant or None)
+    answer = await run_in_threadpool(rag.answer, q, 4, plant or None, body.model.strip() or None)
     seconds = round(time.perf_counter() - t0, 1)   # เวลาที่ LLM ใช้ตอบ (ค้น + สร้างคำตอบ)
     mock = answer is None
     if mock:

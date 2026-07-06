@@ -424,3 +424,12 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .gp-modes { margin-left: auto; }
 .gp-search { margin-left: 0; width: min(280px, 34vw); }
 @media (max-width: 1350px) { .gp-brand { display: none; } }
+
+/* เลือกโมเดลบนหน้าแรก (HUD) */
+.hud-model { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 8px; }
+.hud-model-label { font-family: 'Sora', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #5c6f75; }
+.hud-model select { background: rgba(10,16,22,.8); border: 1px solid rgba(53,224,234,.3); border-radius: 999px; color: #cfe9ec; font-family: 'Anuphan', sans-serif; font-size: 13px; padding: 7px 14px; outline: none; cursor: pointer; backdrop-filter: blur(8px); transition: border-color .15s; }
+.hud-model select:hover { border-color: rgba(53,224,234,.6); }
+.hud-model select:disabled { opacity: .5; cursor: default; }
+.hud-model optgroup { background: #0a1016; color: #8b96a3; }
+.hud-model option { background: #0a1016; color: #eaf6f7; }
