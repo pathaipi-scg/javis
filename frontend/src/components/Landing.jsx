@@ -36,15 +36,14 @@ function ticks(count, r, len, color, w, o, accents, accentColor) {
   return out
 }
 
-export default function Landing() {
+export default function Landing({ model = '' }) {
   const [mode, setMode] = useState('idle')      // idle | listening | thinking | speaking
   const [q, setQ] = useState('')
   const [answer, setAnswer] = useState(null)     // {answer, citations, mock, seconds}
   const [error, setError] = useState('')
   const [micHint, setMicHint] = useState('')
   const [recTime, setRecTime] = useState(0)
-  const [models, setModels] = useState({ local: [], api: [] })  // ตัวเลือกโมเดล
-  const [model, setModel] = useState('')                        // โมเดลที่เลือก (id จริง)
+  // model มาจาก props (dropdown อยู่บน Navbar) — Landing แค่ใช้ค่าตอนถาม
 
   const recRef = useRef(null)      // MediaRecorder
   const streamRef = useRef(null)
@@ -55,14 +54,6 @@ export default function Landing() {
   const playerRef = useRef(null)
 
   useEffect(() => stopMeter, [])   // ปิดไมค์ถ้าออกจากหน้า
-
-  // โหลดรายชื่อโมเดล (local/api) -> ตั้ง default เป็นตัวแรกของ local
-  useEffect(() => {
-    fetch('/api/models').then(r => r.json()).then(d => {
-      setModels({ local: d.local || [], api: d.api || [] })
-      setModel(d.default || d.local?.[0]?.id || '')
-    }).catch(() => {})
-  }, [])
 
   const t = THEMES[mode]
   const bigTicks = ticks(56, 172, 15, t.ring, 3, 0.9, [4, 5, 17, 33], t.accent)
@@ -223,24 +214,6 @@ export default function Landing() {
   return (
     <section className="hud-landing">
       <div className="hud-glow" style={{ background: `radial-gradient(60% 45% at 50% 34%, ${hexA(t.ring, 0.08)}, transparent 70%)` }} />
-
-      {/* เลือกโมเดล (local / api) — มุมบนของหน้าแรก */}
-      <div className="hud-model">
-        <span className="hud-model-label">โมเดล</span>
-        <select value={model} onChange={e => setModel(e.target.value)} disabled={busy}
-          title="เลือกโมเดลที่ใช้ตอบ">
-          {models.local.length > 0 && (
-            <optgroup label="Local (ในเครื่อง)">
-              {models.local.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </optgroup>
-          )}
-          <optgroup label="API (คลาวด์)">
-            {models.api.length > 0
-              ? models.api.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
-              : <option disabled>— เพิ่มภายหลัง —</option>}
-          </optgroup>
-        </select>
-      </div>
 
       <div className="hud-ring-wrap">
         <svg viewBox="0 0 400 400" style={{ display: 'block', width: '100%', height: '100%', filter: `drop-shadow(0 0 6px ${hexA(t.ring, 0.25)})` }}>

@@ -31,6 +31,17 @@ function useRoute() {
 export default function App() {
   const route = useRoute()
 
+  // โมเดลที่ใช้ตอบ — ถือที่ App เพื่อให้ Navbar เลือกได้ (dropdown อยู่มุมขวาบน)
+  // แต่ Landing เป็นตัวใช้ค่าตอนถาม
+  const [models, setModels] = useState({ local: [], api: [] })
+  const [model, setModel] = useState('')
+  useEffect(() => {
+    fetch('/api/models').then(r => r.json()).then(d => {
+      setModels({ local: d.local || [], api: d.api || [] })
+      setModel(d.default || d.local?.[0]?.id || '')
+    }).catch(() => {})
+  }, [])
+
   // ขึ้นหน้าใหม่ให้เลื่อนกลับบนสุด
   useEffect(() => { window.scrollTo(0, 0) }, [route])
 
@@ -45,8 +56,8 @@ export default function App() {
         <div className="streak-glow2" />
         <div className="grid" />
       </div>
-      <Navbar />
-      {route === 'home' && <Landing />}
+      <Navbar models={models} model={model} setModel={setModel} />
+      {route === 'home' && <Landing model={model} />}
       {route === 'ask' && <AskDemo />}
       {route === 'case' && <CasePage />}
       {route === 'search' && <SearchPage />}

@@ -425,12 +425,17 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .gp-search { margin-left: 0; width: min(280px, 34vw); }
 @media (max-width: 1350px) { .gp-brand { display: none; } }
 
-/* เลือกโมเดลบนหน้าแรก (HUD) — วางแถวเดียวกับปุ่ม "เริ่มใช้งาน" บน navbar (มุมขวาบน)
-   fixed เพราะ Landing โชว์แค่หน้าแรก -> ไม่โผล่หน้าอื่น */
-.hud-model { position: fixed; top: 26px; right: 156px; z-index: 30; display: flex; align-items: center; gap: 8px; }
-.hud-model-label { font-family: 'Sora', monospace; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #5c6f75; }
-.hud-model select { background: rgba(10,16,22,.8); border: 1px solid rgba(53,224,234,.3); border-radius: 999px; color: #cfe9ec; font-family: 'Anuphan', sans-serif; font-size: 13px; padding: 7px 14px; outline: none; cursor: pointer; backdrop-filter: blur(8px); transition: border-color .15s; }
-.hud-model select:hover { border-color: rgba(53,224,234,.6); }
-.hud-model select:disabled { opacity: .5; cursor: default; }
-.hud-model optgroup { background: #0a1016; color: #8b96a3; }
-.hud-model option { background: #0a1016; color: #eaf6f7; }
+/* เลือกโมเดล — อยู่บน navbar ข้างปุ่ม "เริ่มใช้งาน" (มุมขวาบน) ธีมเดียวกัน gradient */
+.nav-model { display: flex; align-items: center; gap: 8px; }
+.nav-model-label { font-family: 'Sora', sans-serif; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #8a93ad; white-space: nowrap; }
+.nav-model select {
+  appearance: none; -webkit-appearance: none;
+  background: linear-gradient(135deg,#4b7bff,#8b5cf6) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center;
+  border: none; border-radius: 11px; color: #fff;
+  font-family: 'Anuphan', sans-serif; font-size: 15px; font-weight: 600; padding: 10px 36px 10px 18px; outline: none; cursor: pointer;
+  box-shadow: 0 8px 26px rgba(96,90,255,.45); transition: transform .15s, box-shadow .15s; white-space: nowrap;
+}
+.nav-model select:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(96,90,255,.6); }
+.nav-model select:disabled { opacity: .5; cursor: default; }
+.nav-model optgroup { background: #12162a; color: #8b96a3; }
+.nav-model option { background: #12162a; color: #eaf6f7; }

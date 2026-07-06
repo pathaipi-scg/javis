@@ -1,7 +1,7 @@
 import React from 'react'
 import { Logo } from './Icons.jsx'
 
-export default function Navbar() {
+export default function Navbar({ models = { local: [], api: [] }, model = '', setModel }) {
   return (
     <nav className="nav">
       <a href="#/" className="brand">
@@ -18,6 +18,23 @@ export default function Navbar() {
         <a href="#/dashboard">Dashboard</a>
       </div>
       <div className="nav-actions">
+        {setModel && (
+          <label className="nav-model" title="เลือกโมเดลที่ใช้ตอบ">
+            <span className="nav-model-label">โมเดล</span>
+            <select value={model} onChange={e => setModel(e.target.value)}>
+              {models.local.length > 0 && (
+                <optgroup label="Local (ในเครื่อง)">
+                  {models.local.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                </optgroup>
+              )}
+              <optgroup label="API (คลาวด์)">
+                {models.api.length > 0
+                  ? models.api.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                  : <option disabled>— เพิ่มภายหลัง —</option>}
+              </optgroup>
+            </select>
+          </label>
+        )}
         <a href="#/ask" className="btn-grad">เริ่มใช้งาน</a>
       </div>
     </nav>
