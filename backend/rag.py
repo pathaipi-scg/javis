@@ -17,8 +17,11 @@ load_dotenv()
 VAULT_PATH  = os.getenv("VAULT_PATH", "").strip()
 EMBED_MODEL = os.getenv("EMBED_MODEL", "bge-m3")
 # คะแนน cosine ขั้นต่ำ (%) ที่ถือว่าเคส "เกี่ยว" กับคำถาม — ต่ำกว่านี้ = ขยะ ไม่นับ/ไม่ cite
-# bge-m3 ไทย: เกี่ยวจริงมัก 45-70%, ไม่เกี่ยวมัก <35 -> 40 กันขยะโดยไม่ตัดของดี
-REL_MIN = int(os.getenv("RAG_REL_MIN", "40"))
+# วัดจริงกับ vault นี้ (bge-m3 ไทย):
+#   คำถามซ่อมบำรุง (แม้สั้น): top score 43-67  (แบริ่ง 43, เสียงดัง 47, มอเตอร์ 56)
+#   ทักทาย/คุยเล่น:          top score <=41   (สวัสดี 40, อากาศดี 41, ขอบคุณ 37)
+# 42 คั่นกลาง band -> กัน greeting ไม่ให้ลากเคสมา cite โดยไม่ตัดคำถามจริง
+REL_MIN = int(os.getenv("RAG_REL_MIN", "42"))
 # คำที่บ่งว่า LLM ตอบว่า "ไม่พบ" -> ล้าง citation ทิ้ง (โมเดลเห็นเองว่า context ไม่เกี่ยว)
 _NOT_FOUND_RE = re.compile(r"ไม่พบ|ไม่มีเคส|ไม่ตรง|ไม่เกี่ยวข้อง|ข้อมูลไม่พอ|ไม่มีข้อมูล")
 # embeddings/LLM ใช้ Ollama ตัวเดียวกับ llm.py (OpenAI-compatible)
