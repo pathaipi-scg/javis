@@ -156,15 +156,23 @@ class AskIn(BaseModel):
     model: str = ""      # โมเดลที่เลือกหน้าเว็บ ("" = ใช้ default ตาม .env)
 
 
-# รายชื่อโมเดลให้ frontend ทำ dropdown — แยก local (Ollama) / api (คลาวด์ ยังไม่เปิด)
+# รายชื่อโมเดลให้ frontend ทำ dropdown — แยก local (Ollama) / api (คลาวด์)
 # local: ค่า value = ชื่อโมเดลจริงที่ Ollama เสิร์ฟ (ส่งกลับมาใน /api/ask -> rag.answer)
+# api:   ค่า value = "azure:<deployment>" — rag.py จะ route ไป Azure client
 def _model_options():
     from llm import QWEN_MODEL
+    from rag import AZURE_READY, AZURE_DEPLOYMENT
+    api_models = []
+    if AZURE_READY:
+        api_models.append({
+            "id": f"azure:{AZURE_DEPLOYMENT}",
+            "label": f"GPT-5.4 Mini (Azure)",
+        })
     return {
         "local": [
             {"id": QWEN_MODEL, "label": "Typhoon 8B (ไทย)"},
         ],
-        "api": [],   # ยังไม่เปิด — เว้นไว้ให้ UI โชว์หัวข้อ (เพิ่มทีหลังตอนต่อ API คลาวด์)
+        "api": api_models,
         "default": QWEN_MODEL,
     }
 
