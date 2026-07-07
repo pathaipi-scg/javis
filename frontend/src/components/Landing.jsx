@@ -321,6 +321,7 @@ export default function Landing({ model = '' }) {
         <div className="hud-answer">
           <div className="who">
             <Logo size={13} /> JARVIS
+            {answer.model && <span className="model-badge">🧠 {answer.model}</span>}
             {answer.mock && <span className="mock-badge">MOCK — ต่อ RAG ไม่ติด</span>}
             {answer.seconds != null && <span className="ask-time">⏱️ {answer.seconds} วิ</span>}
             <button type="button" className="ask-tts" onClick={() => speak()} disabled={mode === 'speaking'}

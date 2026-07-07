@@ -26,6 +26,19 @@ REL_MIN_DOMAIN = int(os.getenv("RAG_REL_MIN_DOMAIN", "35"))
 REL_MIN_OTHER  = int(os.getenv("RAG_REL_MIN", "48"))
 # คำที่บ่งว่า LLM ตอบว่า "ไม่พบ" -> ล้าง citation ทิ้ง (โมเดลเห็นเองว่า context ไม่เกี่ยว)
 _NOT_FOUND_RE = re.compile(r"ไม่พบ|ไม่มีเคส|ไม่ตรง|ไม่เกี่ยวข้อง|ข้อมูลไม่พอ|ไม่มีข้อมูล")
+# คำที่บ่งว่าคำตอบ "มีคำแนะนำจริง" -> ถึงจะขึ้นต้นว่า "ไม่พบเคสตรง" ก็ยังอ้างเคสได้
+# (กันเคสตอบดีแบบผสม "ไม่พบตรงเป๊ะ แต่ถ้าหมายถึง X วิธีแก้คือ..." โดนตัด citation ทิ้ง)
+_ADVICE_RE = re.compile(r"วิธีแก้|ควร|แนะนำ|ตรวจ|เปลี่ยน|ปรับ|เติม|อัด|ไล่ลม|ทำความสะอาด")
+# marker ของ "ข้อมูลเคสดิบ" ที่ไม่ควรโผล่ในคำตอบ -> ถ้าเจอแปลว่าโมเดลลอก context มา
+# ต้องตรงกับ header ดิบจริง (มี colon) เท่านั้น — ไม่งั้นชนสำนวนธรรมชาติ เช่น "พบเคสที่เกี่ยวข้องกับ..."
+_DUMP_RE = re.compile(r"\[MTN-\d{4}-\d{4}\]|เคสที่เกี่ยวข้อง:|ฝ่าย:\s|อาการ:\s")
+# ตอนตาข่ายเด้ง: เอาเฉพาะเคสที่คะแนนห่างจากตัวท็อปไม่เกินค่านี้ (กันลากเคสคนละเรื่องมาปน)
+_FALLBACK_MARGIN = int(os.getenv("RAG_FALLBACK_MARGIN", "6"))
+
+
+def _looks_like_dump(text):
+    """เดาว่าคำตอบเป็นการ 'ลอกข้อมูลเคสดิบ' ไหม (โมเดลตัวเล็กชอบทำ)"""
+    return bool(_DUMP_RE.search(text or ""))
 # embeddings/LLM ใช้ Ollama ตัวเดียวกับ llm.py (OpenAI-compatible)
 QWEN_BASE_URL = os.getenv("QWEN_BASE_URL", "http://localhost:11434/v1")
 QWEN_API_KEY  = os.getenv("QWEN_API_KEY", "not-needed")
@@ -347,6 +360,10 @@ def answer(query, k=4, plant=None, model=None):
     """RAG: ดึงเคสที่เกี่ยว -> LLM สรุป. คืน {text, citations} หรือ None
     plant: จำกัดขอบเขตให้ตอบจากเคสในโรงงานนั้นเท่านั้น
     model: ชื่อโมเดลที่ผู้ใช้เลือกหน้าเว็บ (ว่าง/None = ใช้ QWEN_MODEL ตาม .env)"""
+    from llm import QWEN_MODEL
+    # โมเดลที่ผู้ใช้เลือก (azure:* = คลาวด์, อื่น/ว่าง = local ตาม .env) — ใช้ echo กลับทุกเส้นทาง
+    use_model = (model or "").strip()
+    used = use_model if _is_azure_model(use_model) else (use_model or QWEN_MODEL)
     try:
         hits = search(query, k=k, plant=plant)
         if hits is None:
@@ -356,45 +373,63 @@ def answer(query, k=4, plant=None, model=None):
         rel_min = _rel_min_for(query)
         hits = [h for h in hits if h.get("score", 0) >= rel_min]
         if not hits:
-            # ไม่มีเคสที่เกี่ยวจริง -> ตอบชัดว่าไม่พบ ไม่แนบ citation
+            # ไม่มีเคสที่เกี่ยวจริง -> ตอบชัดว่าไม่พบ ไม่แนบ citation (LLM ไม่ถูกเรียก แต่ echo โมเดลที่เลือก)
             where = f"โรงงาน {plant}" if plant else "ระบบ"
-            return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": []}
-        from llm import QWEN_MODEL
+            return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": [], "model": used}
+        # เคสที่ "เกี่ยวจริง" = คะแนนห่างจากเคสตัวท็อปไม่เกิน margin (hits เรียงมาก->น้อยแล้ว)
+        # ใช้ชุดนี้กับทุกอย่าง: context ที่ส่งให้ LLM, ตาข่ายเด้ง, citation — กันลากเคสคนละเรื่องมาปน
+        top = hits[0].get("score", 0)
+        rel_hits = [h for h in hits if h.get("score", 0) >= top - _FALLBACK_MARGIN]
         ctx = "\n".join(
             f"[{h['case_id']}] โรงงาน: {h.get('plant') or '-'} ฝ่าย: {h.get('department') or '-'} "
             f"เครื่อง {h['machine']} อาการ: {h['symptom']} "
             f"จุด: {h['component']} วิธีแก้: {h['solution']}"
-            for h in hits
+            for h in rel_hits
         )
-        prompt = (
-            "คุณคือผู้ช่วยช่างซ่อมบำรุง ตอบคำถามจากเคสที่ให้มาเท่านั้น สั้นกระชับเป็นภาษาไทย "
-            "แต่ละเคสระบุโรงงาน/ฝ่ายไว้ ถ้าคำถามเจาะจงโรงงานใด ให้นับ/ตอบเฉพาะเคสของโรงงานนั้น "
-            "ถ้าข้อมูลไม่พอให้บอกว่าไม่พบเคสที่ตรง\n\n"
-            f"เคสที่เกี่ยวข้อง:\n{ctx}\n\nคำถาม: {query}\n\nคำตอบ:"
+        # prompt แยก system (กฎ) / user (ข้อมูล+คำถาม) — กันโมเดลตัวเล็กลอก context/โครง prompt ซ้ำ
+        # (เลิกใช้ก้อนเดียวจบด้วย "คำตอบ:" ที่ทำให้ Typhoon พ่นข้อมูลดิบกลับมา)
+        system_msg = (
+            "คุณคือผู้ช่วยช่างซ่อมบำรุง ตอบเป็นภาษาไทยสั้นกระชับ ใช้เฉพาะข้อมูลจากเคสที่ให้มา "
+            "ห้ามลอกรหัสเคส (เช่น MTN-xxxx) ชื่อฝ่าย หรือข้อความเคสดิบออกมา ให้ย่อยเป็นคำแนะนำวิธีแก้เท่านั้น "
+            "แต่ละเคสระบุโรงงาน/ฝ่ายไว้ ถ้าคำถามเจาะจงโรงงานใด ให้ตอบเฉพาะเคสของโรงงานนั้น "
+            "ถ้าข้อมูลไม่พอให้บอกว่าไม่พบเคสที่ตรง"
         )
+        user_msg = f"เคสที่เกี่ยวข้อง:\n{ctx}\n\nคำถาม: {query}"
+        messages = [{"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}]
         # เลือก client ตามโมเดล: azure:* → Azure OpenAI, อื่น → Ollama local
-        use_model = (model or "").strip()
         if _is_azure_model(use_model):
             if not AZURE_READY:
                 raise RuntimeError("Azure OpenAI ยังไม่ได้ตั้งค่าใน .env")
             client = _get_azure_client()
             deploy = _azure_deployment(use_model)
+            # หมายเหตุ: gpt-5.4-mini (Azure) ไม่รองรับ stop param — พึ่ง system prompt อย่างเดียว (ก็พอ)
             resp = client.chat.completions.create(
                 model=deploy,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 temperature=0.2,
             )
         else:
             client = _get_client()
+            # local (Ollama) รองรับ stop — ตัดทันทีถ้าเผลอลอกหัว context/โครง prompt
             resp = client.chat.completions.create(
                 model=use_model or QWEN_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 temperature=0.2,
+                stop=["เคสที่เกี่ยวข้อง:", "คำถาม:"],
             )
         text = resp.choices[0].message.content.strip()
-        # ถ้า LLM ตอบว่าไม่พบ/ข้อมูลไม่พอ -> ไม่แนบ citation (กัน "ไม่พบ...แต่มีอ้างอิงเคส")
-        citations = [] if _NOT_FOUND_RE.search(text) else [h["case_id"] for h in hits]
-        return {"text": text, "citations": citations}
+        # ตาข่ายกันขยะ: ถ้าโมเดล (ตัวเล็ก) ยังเผลอลอกข้อมูลเคสดิบ (เจอ marker) หรือ stop ตัดจนเหลือว่าง
+        # -> ทิ้งแล้วสรุปวิธีแก้จากเคสเกี่ยวจริงเอง (deterministic) ไม่ให้เห็นข้อมูลหลังบ้าน/คำตอบว่าง
+        if len(text) < 8 or _looks_like_dump(text):
+            sols = list(dict.fromkeys(h.get("solution", "").strip() for h in rel_hits if h.get("solution")))
+            text = "แนวทางแก้จากเคสใกล้เคียง: " + " • ".join(sols[:3]) if sols else "ไม่พบเคสที่ตรง"
+        # citation: ตัดทิ้งเฉพาะตอน "ปฏิเสธล้วน" (มีคำว่าไม่พบ + ไม่มีคำแนะนำเลย)
+        # ถ้าคำตอบมีคำแนะนำจริง (วิธีแก้/ควร/ตรวจ...) ต่อให้ขึ้นต้นว่า "ไม่พบเคสตรง" ก็ยังอ้างเคส
+        # อ้างเฉพาะ rel_hits (เกี่ยวจริง) ไม่ใช่ top-4 ทั้งหมด
+        is_pure_reject = _NOT_FOUND_RE.search(text) and not _ADVICE_RE.search(text)
+        citations = [] if is_pure_reject else [h["case_id"] for h in rel_hits]
+        return {"text": text, "citations": citations, "model": used}
     except Exception as e:
         print(f"[RAG] answer ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ตก mock")
         return None

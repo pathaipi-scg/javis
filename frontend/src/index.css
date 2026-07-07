@@ -126,6 +126,7 @@ a { color: inherit; }
 .ask-plant:focus { border-color: rgba(120,140,255,.6); }
 .ask-plant option { background: #0a0d1c; color: #eef1fb; }
 .mock-badge { margin-left: 8px; font-size: 11px; font-weight: 600; color: #ffd27f; background: rgba(255,180,60,.14); border: 1px solid rgba(255,190,90,.35); border-radius: 999px; padding: 2px 9px; }
+.model-badge { margin-left: 8px; font-size: 11px; font-weight: 600; color: #a9c4ff; background: rgba(75,123,255,.14); border: 1px solid rgba(96,90,255,.4); border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
 .ask-time { margin-left: 8px; font-size: 11px; font-weight: 600; color: #9fb4ff; background: rgba(96,120,255,.12); border: 1px solid rgba(120,150,255,.3); border-radius: 999px; padding: 2px 9px; }
 .cites { margin-top: 10px; font-size: 13px; color: #a6aed0; }
 
@@ -430,7 +431,7 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .nav-model-label { font-family: 'Sora', sans-serif; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #8a93ad; white-space: nowrap; }
 .nav-model select {
   appearance: none; -webkit-appearance: none;
-  background: linear-gradient(135deg,#4b7bff,#8b5cf6) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center, linear-gradient(135deg,#4b7bff,#8b5cf6);
   border: none; border-radius: 11px; color: #fff;
   font-family: 'Anuphan', sans-serif; font-size: 15px; font-weight: 600; padding: 10px 36px 10px 18px; outline: none; cursor: pointer;
   box-shadow: 0 8px 26px rgba(96,90,255,.45); transition: transform .15s, box-shadow .15s; white-space: nowrap;

@@ -177,6 +177,18 @@ def _model_options():
     }
 
 
+def _model_label(model_id):
+    """map id โมเดล -> ป้ายอ่านง่าย (เช่น 'GPT-5.4 Mini (Azure)') สำหรับโชว์บนคำตอบ
+    ถ้าไม่รู้จัก id คืน id ดิบไปเลย"""
+    if not model_id:
+        return ""
+    opts = _model_options()
+    for m in opts["local"] + opts["api"]:
+        if m["id"] == model_id:
+            return m["label"]
+    return model_id
+
+
 @app.get("/api/models")
 async def api_models():
     """รายชื่อโมเดลที่เลือกได้ (local/api) — ให้หน้าแรกทำ dropdown เลือกโมเดล"""
@@ -212,7 +224,15 @@ async def api_ask(body: AskIn):
             "citations": ["MTN-2026-0142", "MTN-2026-0098"],
         }
     _log_ask(q, plant, answer, mock)
-    return {"answer": answer["text"], "citations": answer["citations"], "mock": mock, "seconds": seconds}
+    # โมเดลที่ตอบจริง: ถ้าตอบสำเร็จใช้ค่าที่ rag คืนมา, ถ้า mock ใช้ค่าที่ผู้ใช้ขอ (เพื่อบอกว่าโมเดลที่เลือกต่อไม่ติด)
+    used_id = answer.get("model") if not mock else (body.model.strip() or None)
+    return {
+        "answer": answer["text"],
+        "citations": answer["citations"],
+        "mock": mock,
+        "seconds": seconds,
+        "model": _model_label(used_id) or _model_label(_model_options()["default"]),
+    }
 
 
 @app.get("/api/history")
