@@ -34,7 +34,8 @@ _ADVICE_RE = re.compile(r"วิธีแก้|ควร|แนะนำ|ตร
 _STRONG_REJECT_RE = re.compile(r"ไม่สามารถ(ระบุ|ตอบ|ให้)|ไม่มีข้อมูลเกี่ยว|ไม่พบข้อมูล|ไม่เกี่ยวข้องกับ")
 # marker ของ "ข้อมูลเคสดิบ" ที่ไม่ควรโผล่ในคำตอบ -> ถ้าเจอแปลว่าโมเดลลอก context มา
 # ต้องตรงกับ header ดิบจริง (มี colon) เท่านั้น — ไม่งั้นชนสำนวนธรรมชาติ เช่น "พบเคสที่เกี่ยวข้องกับ..."
-_DUMP_RE = re.compile(r"\[MTN-\d{4}-\d{4}\]|เคสที่เกี่ยวข้อง:|ฝ่าย:\s|อาการ:\s")
+# รหัสเคสรองรับทั้งแบบเดิม MTN-2026-0001 และแบบหลายเคส/ไฟล์ MTN-080726-01 / MTN-190626
+_DUMP_RE = re.compile(r"\[MTN-\d+(-\d+)?\]|เคสที่เกี่ยวข้อง:|ฝ่าย:\s|อาการ:\s")
 # ตอนตาข่ายเด้ง: เอาเฉพาะเคสที่คะแนนห่างจากตัวท็อปไม่เกินค่านี้ (กันลากเคสคนละเรื่องมาปน)
 _FALLBACK_MARGIN = int(os.getenv("RAG_FALLBACK_MARGIN", "6"))
 
@@ -223,14 +224,19 @@ def _parse_section(txt, header):
     return m.group(1).strip() if m else ""
 
 
-def _parse_case_file(path):
-    """อ่าน cases/<id>.md (สเปก tag-first) -> case dict เดียว"""
-    txt = path.read_text(encoding="utf-8")
+# ขอบเขตเคสในไฟล์แบบหลายเคส: บรรทัด --- ที่ตามด้วย case_id: (frontmatter ของเคสถัดไป)
+_CASE_SPLIT_RE = re.compile(r"(?=^---\s*\ncase_id:)", re.M)
+
+
+def _parse_case_block(txt, fallback_id=""):
+    """parse "1 block เคส" (frontmatter + หัวข้อ) -> case dict
+    รับ string ของเคสเดียว — ใช้ได้ทั้งไฟล์เคสเดี่ยวเดิม และ block ที่ split จากไฟล์หลายเคส"""
     fm = _parse_frontmatter(txt)
     tags = [t.strip() for t in fm.get("tags", "").strip("[] ").split(",") if t.strip()]
     symptom  = _parse_section(txt, "อาการ")
     cause    = _parse_section(txt, "สาเหตุ")
     solution = _parse_section(txt, "วิธีแก้")
+    result   = _parse_section(txt, "ผลลัพธ์")
     machine   = fm.get("machine", "?")
     component = fm.get("component", "")
     category  = fm.get("category", "")
@@ -249,11 +255,12 @@ def _parse_case_file(path):
         symptom, cause, solution,
     ) if x and x.strip())
     return {
-        "case_id":  fm.get("case_id", path.stem),
+        "case_id":  fm.get("case_id") or fallback_id,
         "machine":  machine,
         "symptom":  symptom or "(ไม่ระบุอาการ)",
         "cause":    cause,
         "solution": solution or "(ไม่ระบุวิธีแก้)",
+        "result":   result,
         "component": component or "-",
         "plant": plant,
         "department": department,
@@ -267,8 +274,24 @@ def _parse_case_file(path):
     }
 
 
+def _parse_case_file(path):
+    """อ่านไฟล์ .md แล้วคืน list ของ case dict (รองรับทั้ง 1 ไฟล์ = 1 เคส และหลายเคส/ไฟล์)
+    ระบุเคสจาก `case_id:` ใน frontmatter ของแต่ละ block — ไม่ผูกกับชื่อไฟล์
+    ไฟล์ที่ไม่มี block case_id เลย (README, meetings, โน้ต) ได้ [] -> ไม่หลุดเข้า index"""
+    txt = path.read_text(encoding="utf-8-sig")   # -sig กัน BOM ทำ frontmatter เคสแรก parse ไม่ติด
+    cases = []
+    for block in _CASE_SPLIT_RE.split(txt):
+        fm = _parse_frontmatter(block)
+        # เอาเฉพาะ block ที่ case_id มีค่าและขึ้นต้น MTN- (กรองแทนชื่อไฟล์ MTN-*.md เดิม
+        # + กัน frontmatter ชนิดอื่นหลุดเข้ามา)
+        if not fm.get("case_id", "").startswith("MTN-"):
+            continue
+        cases.append(_parse_case_block(block, fallback_id=path.stem))
+    return cases
+
+
 def load_cases():
-    """อ่านเคสจาก cases/ (สเปก tag-first) — 1 ไฟล์ = 1 เคส"""
+    """อ่านเคสจาก cases/ (สเปก tag-first) — 1 ไฟล์มีได้หลายเคส แยกด้วย case_id ในเนื้อไฟล์"""
     if not VAULT_PATH:
         return []
     cdir = Path(VAULT_PATH) / "cases"
@@ -276,9 +299,9 @@ def load_cases():
         return []
     cases = []
     # rglob = อ่านลึกทุกชั้น cases/<plant>/<dept>/... (ไม่งั้นเคสในโฟลเดอร์ย่อยจะค้นไม่เจอ)
-    for f in sorted(cdir.rglob("MTN-*.md")):
+    for f in sorted(cdir.rglob("*.md")):
         try:
-            cases.append(_parse_case_file(f))
+            cases.extend(_parse_case_file(f))
         except Exception:
             continue
     return cases
@@ -363,6 +386,18 @@ def _ensure_index():
 
 
 # ---------- API ที่ app.py เรียก ----------
+def get_case(case_id):
+    """หาเคสเดียวตาม case_id (ไม่สนตัวพิมพ์เล็ก/ใหญ่) — ให้หน้าเว็บกดดูจาก citation
+    คืน dict (ตัดคีย์ภายใน _*) หรือ None ถ้าไม่พบ"""
+    cid = (case_id or "").strip().casefold()
+    if not cid:
+        return None
+    for c in load_cases():
+        if c["case_id"].casefold() == cid:
+            return {k: v for k, v in c.items() if not k.startswith("_")}
+    return None
+
+
 def all_plants():
     """รายชื่อโรงงานที่มีเคสจริง (ไว้ทำ dropdown กรอง) — ไม่รวมค่าว่าง/_unsorted"""
     plants = set()
@@ -497,21 +532,25 @@ def _analytic_answer(query, plant, use_model, used):
     where = f"โรงงาน {plant}" if plant else "ระบบ"
     if not cases:
         return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": [], "model": used}
+    total = len(cases)                       # จำนวนจริงก่อนตัด — ใช้ตอบคำถามเชิงนับ
     cases = cases[:25]                       # กัน context บวมเมื่อ vault โตขึ้น
     system_msg = (
         "คุณคือผู้ช่วยช่างซ่อมบำรุง ตอบเป็นภาษาไทยสั้นกระชับ "
         "ใช้เฉพาะข้อมูลจากรายการเคสที่ให้มา นับ/สรุปตามที่มีจริงเท่านั้น "
         "ห้ามลอกข้อความเคสดิบทั้งบรรทัด ห้ามเดาหรือเพิ่มความรู้ทั่วไป"
     )
-    user_msg = f"รายการเคส:\n{_case_ctx(cases)}\n\nคำถาม: {query}"
+    # ถ้ารายการถูกตัด (เกิน 25) ต้องบอกจำนวนจริงในหัวรายการ — ไม่งั้นโมเดลนับได้แค่ที่เห็น
+    head = f"รายการเคส (ทั้งหมด {total} เคส แสดง {len(cases)} เคสแรก):" if total > len(cases) \
+           else "รายการเคส:"
+    user_msg = f"{head}\n{_case_ctx(cases)}\n\nคำถาม: {query}"
     text = _llm_chat([{"role": "system", "content": system_msg},
                       {"role": "user", "content": user_msg}],
-                     use_model, stop=["รายการเคส:", "คำถาม:"])
+                     use_model, stop=["รายการเคส:", "รายการเคส (", "คำถาม:"])
     # ตาข่ายกันดิบ (เลนวิเคราะห์): โมเดลตัวเล็กชอบลอก context ทั้งบรรทัด (เจอ [MTN-]/ฝ่าย:)
     # -> แทนด้วยสรุปนับ + รายการเครื่องที่ปลอดภัย (ไม่มีรหัสเคส/ข้อมูลหลังบ้าน)
     if len(text) < 4 or _looks_like_dump(text):
         machines = list(dict.fromkeys(c.get("machine", "").strip() for c in cases if c.get("machine")))
-        text = f"พบ {len(cases)} เคสใน{where}: " + ", ".join(machines[:10])
+        text = f"พบ {total} เคสใน{where}: " + ", ".join(machines[:10])
     return {"text": text, "citations": [c["case_id"] for c in cases[:10]], "model": used}
 
 
