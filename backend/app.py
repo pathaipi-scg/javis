@@ -117,6 +117,36 @@ def _load_ask_history(n=HISTORY_SHOW):
         return []
 
 
+# ประวัติค้นหาหน้า /search — log แยกไฟล์จากประวัติถาม-ตอบ (โครงเดียวกัน: JSONL)
+SEARCH_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "search_history.jsonl")
+
+
+def _log_search(q, plant, results, mock):
+    """append คำค้น+สรุปผลลง log (พังเงียบ ไม่ให้กระทบการค้น)
+    เก็บเฉพาะ top 3 พอให้ preview ในประวัติ — ไม่เก็บผลเต็ม กันไฟล์บวม"""
+    try:
+        rec = {"t": time.strftime("%Y-%m-%d %H:%M"), "q": q, "plant": plant,
+               "n": len(results),
+               "top": [{"case_id": r["case_id"], "machine": r.get("machine", ""),
+                        "score": r.get("score", 0)} for r in results[:3]],
+               "mock": mock}
+        with open(SEARCH_HISTORY_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _load_search_history(n=HISTORY_SHOW):
+    """อ่าน log ค้นหา -> list ล่าสุดก่อน (ไม่เกิน n)"""
+    try:
+        with open(SEARCH_HISTORY_FILE, encoding="utf-8") as f:
+            recs = [json.loads(x) for x in f if x.strip()]
+        return list(reversed(recs))[:n]
+    except Exception:
+        return []
+
+
 # ─────────────────────────────────────────────────────────────
 # ค่า mock: ถ้า vault ว่าง/ต่อ model ไม่ติด -> /api/search, /api/dashboard ตกมาใช้ค่านี้
 # ─────────────────────────────────────────────────────────────
@@ -252,6 +282,22 @@ async def api_history_clear():
     return {"ok": True}
 
 
+@app.get("/api/search-history")
+async def api_search_history():
+    """ประวัติค้นหาล่าสุด (ใหม่ก่อน) — ให้ sidebar หน้า /search"""
+    return {"history": _load_search_history()}
+
+
+@app.post("/api/search-history/clear")
+async def api_search_history_clear():
+    """ลบประวัติค้นหาทั้งหมด"""
+    try:
+        os.remove(SEARCH_HISTORY_FILE)
+    except Exception:
+        pass
+    return {"ok": True}
+
+
 @app.get("/api/form-options")
 async def api_form_options():
     """ตัวเลือกของฟอร์มป้อนเคส (tag/โรงงาน/ฝ่าย จากเคสจริง + ค่าคงที่)"""
@@ -323,6 +369,7 @@ async def api_search(q: str = "", plant: str = ""):
     mock = results is None
     if mock:
         results = _MOCK_SEARCH
+    _log_search(q, plant, results, mock)
     facet = {}
     for r in results:
         for t in r["tags"]:

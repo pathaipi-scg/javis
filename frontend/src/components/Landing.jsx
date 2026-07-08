@@ -43,6 +43,8 @@ export default function Landing({ model = '' }) {
   const [error, setError] = useState('')
   const [micHint, setMicHint] = useState('')
   const [recTime, setRecTime] = useState(0)
+  const [history, setHistory] = useState([])
+  const [histOpen, setHistOpen] = useState(false)  // sidebar ประวัติถาม-ตอบ (log เดียวกับหน้า /ask)
   // model มาจาก props (dropdown อยู่บน Navbar) — Landing แค่ใช้ค่าตอนถาม
 
   const recRef = useRef(null)      // MediaRecorder
@@ -53,7 +55,20 @@ export default function Landing({ model = '' }) {
   const barsRef = useRef(null)
   const playerRef = useRef(null)
 
-  useEffect(() => stopMeter, [])   // ปิดไมค์ถ้าออกจากหน้า
+  useEffect(() => {
+    loadHistory()
+    return stopMeter               // ปิดไมค์ถ้าออกจากหน้า
+  }, [])
+
+  function loadHistory() {
+    fetch('/api/history').then(r => r.json()).then(d => setHistory(d.history || [])).catch(() => {})
+  }
+
+  function clearHistory() {
+    fetch('/api/history/clear', { method: 'POST' })
+      .then(() => setHistory([]))
+      .catch(() => {})
+  }
 
   const t = THEMES[mode]
   const bigTicks = ticks(56, 172, 15, t.ring, 3, 0.9, [4, 5, 17, 33], t.accent)
@@ -163,6 +178,7 @@ export default function Landing({ model = '' }) {
       if (!res.ok) throw new Error('bad status ' + res.status)
       const data = await res.json()
       setAnswer(data)
+      loadHistory()                     // backend log คำถามแล้ว -> รีเฟรช sidebar
       speak(data.answer)                // ได้คำตอบ -> พูดออกเสียงเลย
     } catch (e) {
       setError('เชื่อมต่อ JARVIS ไม่ได้ — ตรวจว่ารัน backend ที่พอร์ต 5000 แล้ว')
@@ -172,7 +188,7 @@ export default function Landing({ model = '' }) {
 
   function cleanForSpeech(t) {
     return (t || '')
-      .replace(/\[?\(?MTN-\d{4}-\d{4}\)?\]?/g, '')
+      .replace(/\[?\(?MTN-\d+(-\d+)?\)?\]?/g, '')
       .replace(/\(\s*[,;\s]*\)/g, '')
       .replace(/\s{2,}/g, ' ')
       .trim()
@@ -347,6 +363,43 @@ export default function Landing({ model = '' }) {
         <a href="#/case" className="hud-cta">ป้อนเคส</a>
         <a href="#/search" className="hud-cta">ค้นเคส</a>
       </div>
+
+      {/* ปุ่มแท็บเปิด/ปิด sidebar ประวัติ (ลอยขอบขวาจอ — ชุดเดียวกับหน้า /ask) */}
+      <button type="button" className={'hist-tab' + (histOpen ? ' open' : '')}
+              onClick={() => setHistOpen(!histOpen)}
+              title={histOpen ? 'ซ่อนประวัติ' : 'ดูประวัติถาม-ตอบ'}>
+        {histOpen ? '›' : '🕘'}
+        {!histOpen && history.length > 0 && <span className="hist-count">{history.length}</span>}
+      </button>
+
+      {/* sidebar ประวัติถาม-ตอบ — เลื่อนเข้า/ออกจากขวา */}
+      <aside className={'hist-drawer' + (histOpen ? ' open' : '')}>
+        <div className="hist-head">
+          <span>🕘 ประวัติถาม-ตอบ</span>
+          <div className="hist-head-actions">
+            {history.length > 0 &&
+              <button type="button" className="hist-clear" onClick={clearHistory}>🗑 ล้าง</button>}
+            <button type="button" className="hist-close" onClick={() => setHistOpen(false)}>✕</button>
+          </div>
+        </div>
+        <div className="hist-body">
+          {history.length === 0 && (
+            <div className="hist-empty">ยังไม่มีประวัติ — ลองถามดู แล้วรายการจะโผล่ตรงนี้ (คลิกเพื่อถามซ้ำได้)</div>
+          )}
+          {history.map((h, i) => (
+            <button key={i} type="button" className="hist-row" title="คลิกเพื่อถามซ้ำ"
+                    onClick={() => { if (mode !== 'thinking') { setQ(h.q); ask(h.q) } }}>
+              <div className="hist-q">
+                {h.q}
+                {h.plant && <span className="hist-plant">โรงงาน {h.plant}</span>}
+                <span className="hist-t">{h.t}{h.mock ? ' · MOCK' : ''}</span>
+              </div>
+              <div className="hist-a">{h.text}</div>
+              {h.citations?.length > 0 && <div className="hist-c">📎 {h.citations.join(', ')}</div>}
+            </button>
+          ))}
+        </div>
+      </aside>
 
       <audio ref={playerRef} style={{ display: 'none' }} />
     </section>

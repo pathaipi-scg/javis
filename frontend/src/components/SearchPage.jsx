@@ -9,22 +9,37 @@ export default function SearchPage() {
   const [data, setData] = useState(null)   // {results, tag_facet, mock}
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [history, setHistory] = useState([])
+  const [histOpen, setHistOpen] = useState(false)   // sidebar ประวัติค้นหา (แบบหน้าถาม)
 
   useEffect(() => {
     fetch('/api/plants').then(r => r.json()).then(d => setPlants(d.plants || [])).catch(() => {})
+    loadHistory()
   }, [])
 
-  async function search(e) {
+  function loadHistory() {
+    fetch('/api/search-history').then(r => r.json()).then(d => setHistory(d.history || [])).catch(() => {})
+  }
+
+  function clearHistory() {
+    fetch('/api/search-history/clear', { method: 'POST' })
+      .then(() => setHistory([]))
+      .catch(() => {})
+  }
+
+  async function search(e, qOverride, plantOverride) {
     e?.preventDefault()
-    const text = q.trim()
+    const text = (qOverride ?? q).trim()
+    const pl = plantOverride ?? plant
     if (!text || loading) return
     setLoading(true)
     setError('')
     try {
-      const params = new URLSearchParams({ q: text, plant })
+      const params = new URLSearchParams({ q: text, plant: pl })
       const res = await fetch('/api/search?' + params)
       if (!res.ok) throw new Error('bad status ' + res.status)
       setData(await res.json())
+      loadHistory()               // ค้นเสร็จ log ฝั่ง backend แล้ว -> รีเฟรชรายการ
     } catch (e) {
       setError('ค้นหาไม่ได้ — ตรวจว่ารัน backend (demo/app.py) ที่พอร์ต 5000 แล้ว')
     } finally {
@@ -84,6 +99,45 @@ export default function SearchPage() {
           </div>
         ))}
       </div>
+
+      {/* ปุ่มแท็บเปิด/ปิด sidebar ประวัติค้นหา (ลอยขอบขวาจอ — แบบเดียวกับหน้าถาม) */}
+      <button type="button" className={'hist-tab' + (histOpen ? ' open' : '')}
+              onClick={() => setHistOpen(!histOpen)}
+              title={histOpen ? 'ซ่อนประวัติ' : 'ดูประวัติค้นหา'}>
+        {histOpen ? '›' : '🕘'}
+        {!histOpen && history.length > 0 && <span className="hist-count">{history.length}</span>}
+      </button>
+
+      {/* sidebar ประวัติค้นหา — เลื่อนเข้า/ออกจากขวา */}
+      <aside className={'hist-drawer' + (histOpen ? ' open' : '')}>
+        <div className="hist-head">
+          <span>🕘 ประวัติค้นหา</span>
+          <div className="hist-head-actions">
+            {history.length > 0 &&
+              <button type="button" className="hist-clear" onClick={clearHistory}>🗑 ล้าง</button>}
+            <button type="button" className="hist-close" onClick={() => setHistOpen(false)}>✕</button>
+          </div>
+        </div>
+        <div className="hist-body">
+          {history.length === 0 && (
+            <div className="hist-empty">ยังไม่มีประวัติ — ลองค้นดู แล้วรายการจะโผล่ตรงนี้ (คลิกเพื่อค้นซ้ำได้)</div>
+          )}
+          {history.map((h, i) => (
+            <button key={i} type="button" className="hist-row" title="คลิกเพื่อค้นซ้ำ"
+                    onClick={() => { setQ(h.q); setPlant(h.plant || ''); search(null, h.q, h.plant || '') }}>
+              <div className="hist-q">
+                {h.q}
+                {h.plant && <span className="hist-plant">โรงงาน {h.plant}</span>}
+                <span className="hist-t">{h.t}{h.mock ? ' · MOCK' : ''}</span>
+              </div>
+              <div className="hist-a">พบ {h.n} เคส</div>
+              {h.top?.length > 0 && (
+                <div className="hist-c">📎 {h.top.map((x) => x.case_id).join(', ')}</div>
+              )}
+            </button>
+          ))}
+        </div>
+      </aside>
     </section>
   )
 }

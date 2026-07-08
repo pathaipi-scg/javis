@@ -13,6 +13,7 @@ env/
 # ไฟล์อัป/ชั่วคราว
 backend/media/
 backend/ask_history.jsonl
+backend/search_history.jsonl
 *.wav
 *.mp3
 *.m4a
