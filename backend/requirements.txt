@@ -18,6 +18,13 @@ requests>=2.31
 edge-tts>=6.1
 
 # ─────────────────────────────────────────────────────────────
+# Reranker (option — ไม่ลงก็ได้ RAG จะตกไปใช้ gate คะแนน embed แบบเดิม)
+# cross-encoder เช็คว่าเคสที่คัดมาเกี่ยวกับคำถามจริงไหม — แยกคมกว่า embed มาก
+# ลาก torch (CPU) มาด้วย ~1.5GB; โมเดล mmarco-mini (~470MB) ดาวน์โหลดอัตโนมัติครั้งแรก
+#     pip install sentence-transformers
+# sentence-transformers
+
+# ─────────────────────────────────────────────────────────────
 # ถอดเสียงในเครื่อง (option — ไม่ลงก็ได้ จะตกไป mock/remote)
 # ลงเมื่อต้องการถอดเสียงด้วย faster-whisper บนเครื่องนี้:
 #     pip install faster-whisper==1.2.1

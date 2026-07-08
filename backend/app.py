@@ -75,7 +75,8 @@ async def _warm_llm():
                 model=QWEN_MODEL, max_tokens=1,
                 messages=[{"role": "user", "content": "hi /no_think"}])
             rag._embed(["warm"])                     # อุ่น bge-m3 (embedding)
-            print(f"[warm] LLM ({QWEN_MODEL}) + bge พร้อมใช้ (โหลดเข้า GPU แล้ว)")
+            rag._get_reranker()                      # อุ่น reranker (CPU) — โหลดครั้งแรกช้า
+            print(f"[warm] LLM ({QWEN_MODEL}) + bge + reranker พร้อมใช้")
         except Exception as e:
             print(f"[warm] โหลด LLM/bge ล่วงหน้าไม่ได้ ({type(e).__name__}) — จะโหลดตอนถามแรกแทน")
     threading.Thread(target=_load, daemon=True).start()
