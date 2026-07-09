@@ -14,6 +14,20 @@ const THEMES = {
 const MODE_CHIPS = ['listening', 'thinking', 'speaking']
 const N_BARS = 20
 
+// ── Wake word "hello jarvis" ──
+// ใช้ webkitSpeechRecognition (Chrome/Edge) ฟังคำปลุกอย่างเดียว — ได้ยินแล้วค่อยเข้า Whisper
+// รองรับเฉพาะเบราว์เซอร์ที่มี SpeechRecognition (feature-detect → ซ่อน toggle ถ้าไม่มี)
+const SR_CLASS = typeof window !== 'undefined'
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
+// ปลุกเมื่อได้ยินโทเคน "jarvis" เท่านั้น (คำทัก hello/สวัสดี เดี่ยวๆ ไม่ปลุก — พูดอย่างอื่นไม่ทำอะไร)
+// SR ถอด jarvis เพี้ยนเป็นไทยได้หลายแบบ เลยครอบหลายสะกด
+const WAKE_RE = /jarvis|จาร์?วิส|จาวิส|จามิส|ยาร์?วิส|จ๊า?ร?วิส/i
+const GREETINGS = [
+  'สวัสดีครับ มีอะไรให้รับใช้ครับ',
+  'สวัสดีครับ ให้ผมช่วยอะไรดีครับ',
+  'ครับผม ว่ามาได้เลยครับ',
+]
+
 function hexA(hex, a) {
   const n = parseInt(hex.slice(1), 16)
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
@@ -45,6 +59,8 @@ export default function Landing({ model = '' }) {
   const [recTime, setRecTime] = useState(0)
   const [history, setHistory] = useState([])
   const [histOpen, setHistOpen] = useState(false)  // sidebar ประวัติถาม-ตอบ (log เดียวกับหน้า /ask)
+  const [wakeMode, setWakeMode] = useState(false)   // toggle "ปลุกด้วยเสียง" — SR ฟังคำปลุก
+  const [heard, setHeard] = useState('')            // ข้อความล่าสุดที่ SR ถอดได้ (โชว์ให้รู้ว่าฟังอยู่)
   // model มาจาก props (dropdown อยู่บน Navbar) — Landing แค่ใช้ค่าตอนถาม
 
   const recRef = useRef(null)      // MediaRecorder
@@ -54,11 +70,71 @@ export default function Landing({ model = '' }) {
   const timerRef = useRef(0)
   const barsRef = useRef(null)
   const playerRef = useRef(null)
+  const srRef = useRef(null)       // SpeechRecognition (wake word)
+  const wakeModeRef = useRef(false) // อ่านค่าล่าสุดใน callback ของ SR
+  const modeRef = useRef('idle')
 
   useEffect(() => {
     loadHistory()
-    return stopMeter               // ปิดไมค์ถ้าออกจากหน้า
+    return () => { stopMeter(); stopWake() }   // ออกจากหน้า -> ปิดไมค์ + SR
   }, [])
+
+  // มิเรอร์ state ลง ref ให้ callback ของ SR (onend/onresult) อ่านค่าปัจจุบันได้
+  useEffect(() => { wakeModeRef.current = wakeMode }, [wakeMode])
+  useEffect(() => { modeRef.current = mode }, [mode])
+
+  // reconcile: SR ควรฟังเฉพาะตอน wakeMode เปิด + ระบบว่าง (idle) เท่านั้น
+  // — ตอนอัด/คิด/พูด ต้องปิด SR (กันแย่งไมค์ + กัน echo จับเสียงตอบตัวเอง)
+  useEffect(() => {
+    if (!SR_CLASS) return
+    if (wakeMode && mode === 'idle') startWake()
+    else stopWake()
+  }, [wakeMode, mode])
+
+  function wakeShouldRun() { return wakeModeRef.current && modeRef.current === 'idle' }
+
+  function startWake() {
+    if (!SR_CLASS || srRef.current) return
+    const sr = new SR_CLASS()
+    sr.lang = 'th-TH'
+    sr.continuous = true
+    sr.interimResults = true
+    sr.onstart = () => setMicHint('🎙️ ฟังคำปลุกอยู่ — พูด “hello jarvis”')
+    sr.onresult = (e) => {
+      let txt = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) txt += e.results[i][0].transcript
+      setHeard(txt.trim().slice(-48))    // โชว์ให้เห็นว่าฟังอยู่ + ถอดคำว่าอะไร (ไว้จูน WAKE_RE)
+      if (WAKE_RE.test(txt)) { setHeard(''); stopWake(); onWake() }
+    }
+    sr.onerror = (ev) => {
+      // ไมค์ถูกปฏิเสธ -> บอกให้อนุญาต (ไม่งั้น user นึกว่าโหมดพัง); no-speech/aborted = ปกติ ปล่อยผ่าน
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        setMicHint('⚠️ เบราว์เซอร์ไม่ให้ใช้ไมค์ — กดอนุญาตไมโครโฟนแล้วเปิดโหมดใหม่')
+        setWakeMode(false)
+      }
+    }
+    sr.onend = () => {
+      srRef.current = null
+      if (wakeShouldRun()) startWake()   // Chrome หยุด SR เองทุก ~60 วิ -> ต่อใหม่ให้ฟังไม่ขาด
+    }
+    srRef.current = sr
+    try { sr.start() } catch { srRef.current = null }
+  }
+
+  function stopWake() {
+    const sr = srRef.current
+    srRef.current = null
+    if (sr) { sr.onend = null; try { sr.abort() } catch (e) {} }
+  }
+
+  // ได้ยินคำปลุก -> ทัก (พูด + โชว์บับเบิล) -> พอทักจบเปิดไมค์ Whisper รับคำถามจริง
+  function onWake() {
+    setError('')
+    const greet = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
+    setAnswer({ answer: greet, citations: [], greeting: true })  // โชว์คำทักเป็นบับเบิล (เห็นแม้เสียงโดน block)
+    setMicHint('👋 ' + greet)
+    speak(greet, () => toggleMic())      // ทักจบ -> อัดคำถาม (คำถามจริงยังผ่าน Whisper)
+  }
 
   function loadHistory() {
     fetch('/api/history').then(r => r.json()).then(d => setHistory(d.history || [])).catch(() => {})
@@ -194,11 +270,12 @@ export default function Landing({ model = '' }) {
       .trim()
   }
 
-  async function speak(raw) {
+  async function speak(raw, onDone) {
     const text = cleanForSpeech(raw ?? answer?.answer)
-    if (!text) { setMode('idle'); return }
+    if (!text) { onDone ? onDone() : setMode('idle'); return }
     setMode('speaking')
-    const backToIdle = () => setMode('idle')
+    // มี onDone (เช่น ทักจบ->อัดต่อ) ให้มันคุม mode เอง — ไม่แวะ idle กัน SR สตาร์ทมาชนไมค์
+    const backToIdle = () => { onDone ? onDone() : setMode('idle') }
     try {
       const fd = new FormData()
       fd.append('text', text)
@@ -294,7 +371,14 @@ export default function Landing({ model = '' }) {
         <span className="hud-dot" style={{ background: t.label, color: t.label }} />
         <span className="hud-status-text" style={{ color: t.label, textShadow: `0 0 10px ${hexA(t.label, 0.5)}` }}>{t.status}</span>
       </div>
-      <div className="hud-sub"><span className="hud-sub-dot" />{micHint || t.sub}</div>
+      <div className="hud-sub"><span className="hud-sub-dot" />
+        {micHint || (wakeMode && mode === 'idle' ? 'พูด “hello jarvis” เพื่อเริ่ม…' : t.sub)}
+      </div>
+      {wakeMode && mode === 'idle' && heard && (
+        <div style={{ marginTop: 6, fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>
+          ได้ยิน: “{heard}”
+        </div>
+      )}
 
       {/* มิเตอร์คลื่นเสียงตอนอัด */}
       {mode === 'listening' && (
@@ -312,6 +396,23 @@ export default function Landing({ model = '' }) {
         {mode === 'listening' ? <IcStop /> : <IcMic />}
         <span>{mode === 'listening' ? 'แตะเพื่อหยุด' : mode === 'speaking' ? 'ถามใหม่' : 'แตะเพื่อพูดถาม'}</span>
       </button>
+
+      {/* toggle ปลุกด้วยเสียง "hello jarvis" (เฉพาะ Chrome/Edge ที่มี SpeechRecognition) */}
+      {SR_CLASS && (
+        <button type="button" className="hud-wake" onClick={() => setWakeMode(v => !v)}
+          aria-pressed={wakeMode}
+          style={{
+            marginTop: 14, padding: '9px 18px', borderRadius: 100, cursor: 'pointer',
+            fontSize: 13, fontWeight: 600, letterSpacing: '.02em',
+            border: `1px solid ${wakeMode ? hexA('#46e08a', 0.9) : 'rgba(120,140,170,.35)'}`,
+            color: wakeMode ? '#04060a' : '#9fb0c4',
+            background: wakeMode ? '#46e08a' : 'rgba(120,140,170,.08)',
+            boxShadow: wakeMode ? '0 0 20px -4px rgba(70,224,138,.7)' : 'none',
+            transition: 'all .2s',
+          }}>
+          {wakeMode ? '🎙️ กำลังฟัง “hello jarvis”' : '🎙️ เปิดโหมดปลุกด้วยเสียง'}
+        </button>
+      )}
 
       {/* ชิปสถานะ (สะท้อน mode ปัจจุบัน ไม่ใช่ปุ่มกด) */}
       <div className="hud-modes">
