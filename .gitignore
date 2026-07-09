@@ -1,6 +1,8 @@
 # secrets / config ส่วนตัว
 .env
 backend/.env
+# n8n workflow export — มี API key ฝังในไฟล์ ห้ามขึ้น repo
+backend/n8n/
 
 # python
 __pycache__/

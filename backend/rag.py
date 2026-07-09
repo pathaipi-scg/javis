@@ -70,6 +70,15 @@ AZURE_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
 AZURE_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
 AZURE_READY      = bool(AZURE_ENDPOINT and AZURE_API_KEY and AZURE_DEPLOYMENT)
 
+# ---- n8n proxy lane — ยิงผ่าน webhook n8n (ในวงบริษัท) แทนเรียก Azure ตรงจากแอป ----
+# n8n ถือ API key เอง (ไม่โผล่ในแอป) + คุมกลาง/log/rate-limit ได้ที่เดียว
+# ข้อมูลยังออกไป Azure OpenAI ของบริษัทเหมือนเดิม — n8n แค่กัน key รั่ว + เป็นจุดคุม
+# ตั้งแค่ URL webhook ใน .env (ไม่มี secret ในโค้ด) เช่น http://<n8n-host>/webhook/ask_javis
+N8N_ASK_URL = os.getenv("N8N_ASK_URL", "").strip()
+# กัน slash เกิน (เช่น :1889//webhook) ที่ทำ n8n ตอบ 404 — ยุบ // ที่ไม่ใช่หลัง scheme
+N8N_ASK_URL = re.sub(r"(?<!:)//+", "/", N8N_ASK_URL)
+N8N_READY   = bool(N8N_ASK_URL)
+
 # ---- Reranker (cross-encoder) — ตัวเช็คซ้ำว่าเคสที่ bge-m3 คัดมา "เกี่ยวกับคำถามจริงไหม" ----
 # bge-m3 (bi-encoder) วัดได้แค่หัวข้อคล้าย -> "แอร์ออฟฟิศ" ชน "Air Compressor" ได้คะแนนสูงผิดๆ
 # cross-encoder อ่านคำถาม+เคสพร้อมกัน แยกเกี่ยว/ไม่เกี่ยวได้คมกว่ามาก (0.85 vs 0.05)
@@ -348,6 +357,27 @@ def _is_azure_model(model_id):
     return (model_id or "").strip().startswith("azure:")
 
 
+def _is_n8n_model(model_id):
+    """ตรวจว่า model ที่เลือกวิ่งผ่าน n8n proxy หรือไม่ (prefix n8n)"""
+    return (model_id or "").strip().startswith("n8n")
+
+
+def _n8n_ask(context, question):
+    """ยิงคำถาม+context ไป webhook n8n -> คืนข้อความคำตอบ (n8n forward ให้ Azure เอง)
+    n8n Code node คืน {text}; เผื่อ n8n ห่อเป็น array ก็ยังอ่านได้"""
+    import requests
+    resp = requests.post(N8N_ASK_URL, json={"context": context, "question": question}, timeout=90)
+    resp.raise_for_status()
+    body = (resp.text or "").strip()
+    # n8n คืน 200 body ว่าง = node "Respond to Webhook" ยัง disabled -> บอกชัดแทนคืนค่าว่างเงียบ
+    if not body:
+        raise RuntimeError("n8n คืน body ว่าง — เปิด node 'Respond to Webhook' ใน workflow ask_javis")
+    data = resp.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return (data.get("text") or "").strip()
+
+
 def _azure_deployment(model_id):
     """ดึงชื่อ deployment จาก model_id (azure:gpt-5.4-mini -> AZURE_DEPLOYMENT)
     หรือถ้ามี custom deployment name หลัง prefix ก็ใช้ตามนั้น"""
@@ -491,9 +521,14 @@ def _case_ctx(cases):
     )
 
 
-def _llm_chat(messages, use_model, stop=None):
-    """เรียก LLM ตาม routing: azure:* -> Azure OpenAI, อื่น -> Ollama local. คืนข้อความคำตอบ"""
+def _llm_chat(messages, use_model, stop=None, n8n_context=None, n8n_question=None):
+    """เรียก LLM ตาม routing: n8n* -> webhook n8n, azure:* -> Azure OpenAI, อื่น -> Ollama local
+    คืนข้อความคำตอบ. เลน n8n ใช้ n8n_context/n8n_question (n8n ประกอบ prompt + ถือ key เอง)"""
     from llm import QWEN_MODEL
+    if _is_n8n_model(use_model):
+        if not N8N_READY:
+            raise RuntimeError("N8N_ASK_URL ยังไม่ได้ตั้งค่าใน .env")
+        return _n8n_ask(n8n_context or "", n8n_question or "")
     if _is_azure_model(use_model):
         if not AZURE_READY:
             raise RuntimeError("Azure OpenAI ยังไม่ได้ตั้งค่าใน .env")
@@ -542,10 +577,12 @@ def _analytic_answer(query, plant, use_model, used):
     # ถ้ารายการถูกตัด (เกิน 25) ต้องบอกจำนวนจริงในหัวรายการ — ไม่งั้นโมเดลนับได้แค่ที่เห็น
     head = f"รายการเคส (ทั้งหมด {total} เคส แสดง {len(cases)} เคสแรก):" if total > len(cases) \
            else "รายการเคส:"
-    user_msg = f"{head}\n{_case_ctx(cases)}\n\nคำถาม: {query}"
+    ctx_block = f"{head}\n{_case_ctx(cases)}"
+    user_msg = f"{ctx_block}\n\nคำถาม: {query}"
     text = _llm_chat([{"role": "system", "content": system_msg},
                       {"role": "user", "content": user_msg}],
-                     use_model, stop=["รายการเคส:", "รายการเคส (", "คำถาม:"])
+                     use_model, stop=["รายการเคส:", "รายการเคส (", "คำถาม:"],
+                     n8n_context=ctx_block, n8n_question=query)
     # ตาข่ายกันดิบ (เลนวิเคราะห์): โมเดลตัวเล็กชอบลอก context ทั้งบรรทัด (เจอ [MTN-]/ฝ่าย:)
     # -> แทนด้วยสรุปนับ + รายการเครื่องที่ปลอดภัย (ไม่มีรหัสเคส/ข้อมูลหลังบ้าน)
     if len(text) < 4 or _looks_like_dump(text):
@@ -561,7 +598,8 @@ def answer(query, k=4, plant=None, model=None):
     from llm import QWEN_MODEL
     # โมเดลที่ผู้ใช้เลือก (azure:* = คลาวด์, อื่น/ว่าง = local ตาม .env) — ใช้ echo กลับทุกเส้นทาง
     use_model = (model or "").strip()
-    used = use_model if _is_azure_model(use_model) else (use_model or QWEN_MODEL)
+    used = use_model if (_is_azure_model(use_model) or _is_n8n_model(use_model)) \
+        else (use_model or QWEN_MODEL)
     try:
         # เลนวิเคราะห์: คำถามนับ/สรุป/ภาพรวม — ต้องเห็นเคสทั้งกอง reranker รายเคสจะตัดหมด
         if _AGG_RE.search(query):
@@ -602,7 +640,8 @@ def answer(query, k=4, plant=None, model=None):
         user_msg = f"เคสที่เกี่ยวข้อง:\n{ctx}\n\nคำถาม: {query}"
         messages = [{"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg}]
-        text = _llm_chat(messages, use_model, stop=["เคสที่เกี่ยวข้อง:", "คำถาม:"])
+        text = _llm_chat(messages, use_model, stop=["เคสที่เกี่ยวข้อง:", "คำถาม:"],
+                         n8n_context=ctx, n8n_question=query)
         # ตาข่ายกันขยะ: ถ้าโมเดล (ตัวเล็ก) ยังเผลอลอกข้อมูลเคสดิบ (เจอ marker) หรือ stop ตัดจนเหลือว่าง
         # -> ทิ้งแล้วสรุปวิธีแก้จากเคสเกี่ยวจริงเอง (deterministic) ไม่ให้เห็นข้อมูลหลังบ้าน/คำตอบว่าง
         if len(text) < 8 or _looks_like_dump(text):

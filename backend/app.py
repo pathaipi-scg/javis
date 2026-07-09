@@ -192,12 +192,15 @@ class AskIn(BaseModel):
 # api:   ค่า value = "azure:<deployment>" — rag.py จะ route ไป Azure client
 def _model_options():
     from llm import QWEN_MODEL
-    from rag import AZURE_READY, AZURE_DEPLOYMENT
+    from rag import N8N_READY
     api_models = []
-    if AZURE_READY:
+    # เฉพาะเลน n8n proxy (ปลอดภัย — key ไม่อยู่ในแอป, คุมกลางที่ n8n)
+    # เลน Azure ตรง (azure:*) ยังใช้ได้ในโค้ด rag.py แต่ไม่โชว์ใน dropdown แล้ว
+    # (ตัดออกเพราะเรียก Azure ตรงจากแอป = key อยู่ในแอป ไม่ปลอดภัยเท่าผ่าน n8n)
+    if N8N_READY:
         api_models.append({
-            "id": f"azure:{AZURE_DEPLOYMENT}",
-            "label": f"GPT-5.4 Mini (Azure)",
+            "id": "n8n:gpt-5.4-mini",
+            "label": "GPT-5.4 Mini (ผ่าน n8n · ปลอดภัย)",
         })
     return {
         "local": [
