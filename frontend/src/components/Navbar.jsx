@@ -16,6 +16,7 @@ export default function Navbar({ models = { local: [], api: [] }, model = '', se
         <a href="#/graph">Graph</a>
         <a href="#/stt">ทดสอบ STT</a>
         <a href="#/dashboard">Dashboard</a>
+        <a href="#/stats">สรุป</a>
       </div>
       <div className="nav-actions">
         {setModel && (

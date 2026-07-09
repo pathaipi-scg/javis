@@ -683,6 +683,65 @@ def stats():
     return st, categories
 
 
+def _parse_date(s):
+    """แปลงวันที่จากเคส/ฟิลเตอร์เป็น date object (best-effort)
+    รองรับ 2026-06-10 / 10/06/2026 / 10-06-69 / '10 มิ.ย. 2569' (พ.ศ.).
+    อ่านไม่ออก -> None (ฝั่งกรองจะไม่ตัดเคสนั้นทิ้ง)"""
+    from datetime import date
+    s = (s or "").strip()
+    if not s:
+        return None
+    nums = re.findall(r"\d+", s)
+    try:
+        if re.match(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}", s):   # ISO: ปีมาก่อน
+            y, m, d = int(nums[0]), int(nums[1]), int(nums[2])
+        elif len(nums) >= 3:                                # วัน/เดือน/ปี
+            d, m, y = int(nums[0]), int(nums[1]), int(nums[2])
+        else:
+            return None
+        if y > 2400:            # พ.ศ. -> ค.ศ.
+            y -= 543
+        elif y < 100:           # ปี 2 หลัก -> 20xx
+            y += 2000
+        return date(y, m, d)
+    except Exception:
+        return None
+
+
+def bubbles(plant=None, date_from=None, date_to=None):
+    """ข้อมูลหน้า bubble dashboard: เคสจริงจัดกลุ่มตาม category (fallback tag แรก)
+    แต่ละฟอง = 1 เคส (symptom) พร้อม cause/solution ให้ panel + jarvis ใช้ต่อ
+    กรองตามโรงงาน + ช่วงวันที่ซ่อม (อ่านวันที่ไม่ออก = ไม่ตัดทิ้ง)
+    คืน {groups, total} หรือ None ถ้า vault ว่าง (ให้ app.py ตก mock)"""
+    cases = load_cases()
+    if not cases:
+        return None
+    if plant:
+        pf = plant.strip().casefold()
+        cases = [c for c in cases if (c.get("plant") or "").strip().casefold() == pf]
+    df, dt = _parse_date(date_from), _parse_date(date_to)
+    if df or dt:
+        keep = []
+        for c in cases:
+            cd = _parse_date(c.get("repair_date"))
+            if cd is None or ((not df or cd >= df) and (not dt or cd <= dt)):
+                keep.append(c)
+        cases = keep
+    groups = {}
+    for c in cases:
+        cat = (c.get("category") or "").strip() or (c.get("tags") or ["general"])[0]
+        groups.setdefault(cat, []).append({
+            "case_id": c["case_id"], "symptom": c["symptom"],
+            "cause": c.get("cause", ""), "solution": c.get("solution", ""),
+            "machine": c.get("machine", ""), "component": c.get("component", ""),
+            "repair_date": c.get("repair_date", ""), "severity": c.get("severity", ""),
+            "downtime_min": c.get("downtime_min", 0), "plant": c.get("plant", ""),
+        })
+    out = [{"category": k, "count": len(v), "cases": v}
+           for k, v in sorted(groups.items(), key=lambda x: -len(x[1]))]
+    return {"groups": out, "total": len(cases)}
+
+
 def graph():
     """สร้างข้อมูล knowledge graph จากเคสจริงใน vault สำหรับหน้า #/graph
     โหนด: plant / machine / component / case / fault(category) / team(department)

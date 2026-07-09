@@ -16,7 +16,7 @@ frontend dev (แก้ UI เห็นสด): cd ../frontend && npm run dev  (
 from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 from starlette.concurrency import run_in_threadpool
 import os, sys, tempfile, re, time, shutil, json
@@ -165,6 +165,32 @@ _MOCK_SEARCH = [
      "solution": "เปลี่ยนซีลวาล์ว", "score": 68,
      "tags": ["hydraulic", "leak"]},
 ]
+
+_MOCK_BUBBLES = {"total": 5, "groups": [
+    {"category": "hydraulic", "count": 2, "cases": [
+        {"case_id": "MTN-2026-0142", "symptom": "แรงดันไฮดรอลิกตกเป็นระยะ เครื่องหยุดกลางรอบ",
+         "cause": "ซีลวาล์ว V-203 เสื่อม มีลมในระบบ", "solution": "เปลี่ยนชุดซีล V-203 + ไล่ลม",
+         "machine": "Forming Press", "component": "V-203", "repair_date": "2026-06-10",
+         "severity": "high", "downtime_min": 45, "plant": "CB"},
+        {"case_id": "MTN-2026-0098", "symptom": "ปั๊มไฮดรอลิกแรงดันไม่ขึ้น",
+         "cause": "น้ำมันไฮดรอลิกต่ำ + วาล์วตัน", "solution": "ตรวจวาล์ว + เติมน้ำมันไฮดรอลิก",
+         "machine": "Forming Press", "component": "Pump", "repair_date": "2026-06-12",
+         "severity": "medium", "downtime_min": 30, "plant": "CB"}]},
+    {"category": "electrical", "count": 2, "cases": [
+        {"case_id": "MTN-2026-0120", "symptom": "มอเตอร์ปั๊มน้ำร้อนจัดจนไหม้",
+         "cause": "แบริ่งฝืด โหลดเกิน", "solution": "เปลี่ยนมอเตอร์ + ตรวจแบริ่ง",
+         "machine": "Water Pump", "component": "Motor", "repair_date": "2026-06-11",
+         "severity": "high", "downtime_min": 90, "plant": "CB"},
+        {"case_id": "MTN-2025-0331", "symptom": "หม้อแปลง 42KV รั่วไฟอ่อน",
+         "cause": "ฉนวนเสื่อม", "solution": "Oil Test + เปลี่ยนฉนวน",
+         "machine": "Transformer", "component": "42KV", "repair_date": "2026-06-10",
+         "severity": "low", "downtime_min": 20, "plant": "CB"}]},
+    {"category": "belt", "count": 1, "cases": [
+        {"case_id": "MTN-2026-0077", "symptom": "สายพาน Kobelco ขาด 2 ครั้ง",
+         "cause": "สายพานหมดอายุ", "solution": "เปลี่ยนสายพานชุดใหม่",
+         "machine": "Kobelco", "component": "Belt", "repair_date": "2026-06-10",
+         "severity": "medium", "downtime_min": 60, "plant": "CB"}]},
+]}
 
 _MOCK_STATS = ({"total": 142, "downtime": 3820, "machines": 27}, [
     {"name": "hydraulic", "count": 18},
@@ -379,6 +405,18 @@ async def api_search(q: str = "", plant: str = ""):
             facet[t] = facet.get(t, 0) + 1
     tag_facet = sorted(facet.items(), key=lambda x: -x[1])
     return {"results": results, "tag_facet": tag_facet, "mock": mock}
+
+
+@app.get("/api/bubbles")
+async def api_bubbles(plant: str = "", date_from: str = Query("", alias="from"),
+                      date_to: str = Query("", alias="to")):
+    """เคสจริงจัดกลุ่มตาม category สำหรับหน้า bubble dashboard (#/dashboard)
+    กรองด้วย ?plant=&from=YYYY-MM-DD&to=YYYY-MM-DD (ว่าง = ไม่กรอง)"""
+    b = await run_in_threadpool(rag.bubbles, plant or None, date_from or None, date_to or None)
+    mock = b is None
+    if mock:
+        b = _MOCK_BUBBLES
+    return {"groups": b["groups"], "total": b["total"], "mock": mock}
 
 
 @app.get("/api/dashboard")

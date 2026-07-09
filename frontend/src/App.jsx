@@ -5,6 +5,7 @@ import AskDemo from './components/AskDemo.jsx'
 import CasePage from './components/CasePage.jsx'
 import SearchPage from './components/SearchPage.jsx'
 import DashboardPage from './components/DashboardPage.jsx'
+import BubblePage from './components/BubblePage.jsx'
 import SttPage from './components/SttPage.jsx'
 import GraphPage from './components/GraphPage.jsx'
 import Footer from './components/Footer.jsx'
@@ -24,6 +25,7 @@ function useRoute() {
   if (hash.startsWith('#/search')) return 'search'
   if (hash.startsWith('#/graph')) return 'graph'
   if (hash.startsWith('#/dashboard')) return 'dashboard'
+  if (hash.startsWith('#/stats')) return 'stats'
   if (hash.startsWith('#/stt')) return 'stt'
   return 'home'
 }
@@ -45,8 +47,9 @@ export default function App() {
   // ขึ้นหน้าใหม่ให้เลื่อนกลับบนสุด
   useEffect(() => { window.scrollTo(0, 0) }, [route])
 
-  // หน้า graph เต็มจอ มี topbar ของตัวเอง — ไม่ใช้ Navbar/Footer ของแอพ
+  // หน้าเต็มจอ (มี topbar ของตัวเอง) — ไม่ใช้ Navbar/Footer ของแอพ
   if (route === 'graph') return <GraphPage />
+  if (route === 'dashboard') return <BubblePage />
 
   return (
     <div className="page">
@@ -61,7 +64,7 @@ export default function App() {
       {route === 'ask' && <AskDemo />}
       {route === 'case' && <CasePage />}
       {route === 'search' && <SearchPage />}
-      {route === 'dashboard' && <DashboardPage />}
+      {route === 'stats' && <DashboardPage />}
       {route === 'stt' && <SttPage />}
       <Footer />
     </div>
