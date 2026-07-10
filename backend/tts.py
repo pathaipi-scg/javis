@@ -2,23 +2,39 @@
 แปลงข้อความคำตอบ -> เสียงพูดไทย (TTS)
 
 2 engine (เลือกด้วย env TTS_ENGINE):
-  - "windows" = Microsoft Pattara (OneCore) ผ่าน PowerShell/WinRT — offline 100%, CPU, ไม่ต้องเน็ต
-  - "edge"    = edge-tts (th-TH-NiwatNeural) — ออนไลน์ ฟรี เสียง Neural คุณภาพสูงกว่า แต่ต้องต่อเน็ต
+  - "gemini"  = Gemini TTS — ใช้ key/บัญชี Gemini ของบริษัท (GEMINI_API_KEY) ยิงผ่าน GEMINI_BASE_URL
+  - "windows" = Microsoft Pattara (OneCore) ผ่าน PowerShell/WinRT — offline 100%, ไม่ออกเน็ตเลย
 
 graceful degradation (เหมือน transcribe.py/llm.py):
-  - engine ที่เลือกล้มเหลว -> คืน None ให้ฝั่งเว็บ fallback เสียงสังเคราะห์ของเบราว์เซอร์ (SpeechSynthesis)
-คืนค่าเป็น (bytes, media_type) — windows=audio/wav, edge=audio/mpeg
+  - engine ที่เลือกล้มเหลว -> คืน None ให้ฝั่งเว็บ fallback เสียงสังเคราะห์ของเบราว์เซอร์ (SpeechSynthesis, ในเครื่อง)
+คืนค่าเป็น (bytes, media_type) — windows=audio/wav ; gemini=audio/wav (ผ่าน JARVIS FX)
+
+JARVIS FX (_jarvis_fx): DSP ในเครื่อง (numpy/PyAV, ไม่ออกเน็ต) — band-limit + presence + echo ห้องแคบ + normalize
+  ปรับผ่าน env TTS_FX_* ; ปิดด้วย TTS_FX=0
 """
-import os, subprocess, tempfile, uuid
+import base64, io, os, subprocess, tempfile, uuid, wave
 from dotenv import load_dotenv
 load_dotenv()
 
-TTS_ENGINE = os.getenv("TTS_ENGINE", "windows").strip().lower()   # "windows" | "edge"
+TTS_ENGINE = os.getenv("TTS_ENGINE", "gemini").strip().lower()   # "gemini" | "windows"
 
-# edge-tts: th-TH-NiwatNeural = ชายไทย (JARVIS) ; th-TH-PremwadeeNeural = หญิงไทย
-TTS_VOICE = os.getenv("TTS_VOICE", "th-TH-NiwatNeural")
-TTS_RATE  = os.getenv("TTS_RATE", "+0%")
-TTS_PITCH = os.getenv("TTS_PITCH", "+0Hz")
+# ---- Gemini TTS (ผ่าน endpoint บริษัท เท่านั้น) ----
+GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_BASE_URL  = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+GEMINI_TTS_VOICE = os.getenv("GEMINI_TTS_VOICE", "Charon")   # เสียงชายทุ้ม; เทียบ Charon/Fenrir/Orus
+GEMINI_TTS_TIMEOUT = int(os.getenv("GEMINI_TTS_TIMEOUT", "60"))
+
+# JARVIS DSP (numpy ผ่าน PyAV): band-limit + presence + echo ห้องแคบ + normalize
+#   ให้เสียง comms/AI: ตัดเบส-ตัดไฮ + ดันย่านกลางให้คม + echo สั้น = ห้องแคบ
+#   TTS_FX=1 เปิด ; PyAV ใช้ไม่ได้ -> ข้าม คืนเสียงดิบ (graceful)
+TTS_FX = os.getenv("TTS_FX", "1").strip() not in ("0", "", "false", "no")
+TTS_FX_HP        = float(os.getenv("TTS_FX_HP", "120"))        # highpass Hz (ตัดเบสบาง)
+TTS_FX_LP        = float(os.getenv("TTS_FX_LP", "5000"))       # lowpass Hz (ตัดไฮ)
+TTS_FX_PRESENCE   = float(os.getenv("TTS_FX_PRESENCE", "4.0")) # gain ย่านสูง (คม/สว่าง)
+TTS_FX_PRESENCE_F = float(os.getenv("TTS_FX_PRESENCE_F", "1200"))  # ความถี่เริ่มบูสต์
+TTS_FX_ECHO_MS   = float(os.getenv("TTS_FX_ECHO_MS", "22"))    # echo delay ms (ห้องแคบ)
+TTS_FX_ECHO_GAIN = float(os.getenv("TTS_FX_ECHO_GAIN", "0.16"))# echo ความดัง 0-1
 
 # windows: ชื่อเสียง OneCore ("" = เลือกไทยตัวแรก = Microsoft Pattara)
 TTS_WIN_VOICE = os.getenv("TTS_WIN_VOICE", "")
@@ -32,7 +48,7 @@ async def synthesize(text):
         return None
     if TTS_ENGINE == "windows":
         return _synthesize_windows(text)
-    return await _synthesize_edge(text)
+    return _synthesize_gemini(text)
 
 
 def _synthesize_windows(text):
@@ -62,16 +78,86 @@ def _synthesize_windows(text):
             except OSError: pass
 
 
-async def _synthesize_edge(text):
-    """edge-tts (Neural, ออนไลน์) -> (mp3 bytes, 'audio/mpeg')"""
+def _synthesize_gemini(text):
+    """Gemini TTS (key/บัญชีบริษัท) -> PCM -> ห่อ WAV -> JARVIS FX -> (wav bytes, media_type).
+    ล้มเหลว -> None (fallback เสียงเบราว์เซอร์)"""
     try:
-        import edge_tts
-        communicate = edge_tts.Communicate(text, TTS_VOICE, rate=TTS_RATE, pitch=TTS_PITCH)
-        buf = bytearray()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buf.extend(chunk["data"])
-        return (bytes(buf), "audio/mpeg") if buf else None
+        import requests
+        if not GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY ยังไม่ได้ตั้งใน .env")
+        url = f"{GEMINI_BASE_URL}/models/{GEMINI_TTS_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        body = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": GEMINI_TTS_VOICE}}},
+            },
+        }
+        resp = requests.post(url, json=body, timeout=GEMINI_TTS_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        cands = data.get("candidates", [])
+        if not cands:
+            raise RuntimeError(f"Gemini คืนว่าง (อาจโดน safety block): {str(data)[:200]}")
+        parts = cands[0].get("content", {}).get("parts", [])
+        b64 = next((p["inlineData"]["data"] for p in parts if p.get("inlineData")), None)
+        if not b64:
+            raise RuntimeError("Gemini ไม่คืน audio (inlineData)")
+        pcm = base64.b64decode(b64)
+        # Gemini TTS คืน PCM ดิบ 24kHz mono 16-bit -> ห่อ WAV
+        wbuf = io.BytesIO()
+        with wave.open(wbuf, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000); w.writeframes(pcm)
+        return _jarvis_fx(wbuf.getvalue())     # -> (bytes, media_type) ; FX ในเครื่อง ไม่ออกเน็ต
     except Exception as e:
-        print(f"[TTS] edge ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ฝั่งเว็บจะใช้เสียงเบราว์เซอร์แทน")
+        print(f"[TTS] gemini ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ฝั่งเว็บจะใช้เสียงเบราว์เซอร์แทน")
         return None
+
+
+def _jarvis_fx(audio_bytes):
+    """JARVIS DSP: audio(wav/mp3) -> EQ curve + echo + normalize -> (wav bytes, 'audio/wav').
+    ใช้ PyAV decode + numpy DSP ในเครื่อง (ไม่ออกเน็ต). FX ปิด/ล้มเหลว -> คืน (input, 'audio/wav')"""
+    if not TTS_FX:
+        return (audio_bytes, "audio/wav")
+    try:
+        import av, numpy as np
+        # --- decode (in-memory) -> mono float @ sr ---
+        cont = av.open(io.BytesIO(audio_bytes))
+        sr = cont.streams.audio[0].rate
+        rs = av.AudioResampler(format="flt", layout="mono", rate=sr)
+        parts = []
+        for fr in cont.decode(audio=0):
+            for r in rs.resample(fr):
+                parts.append(r.to_ndarray().reshape(-1))
+        if not parts:
+            return (audio_bytes, "audio/wav")
+        x = np.concatenate(parts).astype(np.float64)
+
+        # --- band-limit + presence (zero-phase FFT) ---
+        n = len(x)
+        X = np.fft.rfft(x)
+        f = np.fft.rfftfreq(n, 1.0 / sr)
+        X[f < TTS_FX_HP] = 0.0
+        X[f > TTS_FX_LP] = 0.0
+        X[f > TTS_FX_PRESENCE_F] *= TTS_FX_PRESENCE
+        y = np.fft.irfft(X, n)
+
+        # --- echo สั้น = ห้องแคบ ---
+        d = int(TTS_FX_ECHO_MS * 0.001 * sr)
+        if d > 0 and TTS_FX_ECHO_GAIN > 0:
+            e = np.zeros_like(y)
+            e[d:] = y[:-d] * TTS_FX_ECHO_GAIN
+            y = y + e
+
+        # --- normalize peak ~0.95 ---
+        peak = float(np.max(np.abs(y))) or 1.0
+        y = np.clip(y / peak * 0.95, -1.0, 1.0)
+        pcm = (y * 32767).astype("<i2")
+
+        wbuf = io.BytesIO()
+        with wave.open(wbuf, "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(pcm.tobytes())
+        return (wbuf.getvalue(), "audio/wav")
+    except Exception as e:
+        print(f"[TTS] JARVIS FX error ({type(e).__name__}: {e}) -> เสียงดิบ")
+        return (audio_bytes, "audio/wav")

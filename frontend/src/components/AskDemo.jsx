@@ -33,6 +33,7 @@ export default function AskDemo() {
   const timerRef = useRef(0)
   const barsRef = useRef(null)     // div ของแท่งมิเตอร์
   const playerRef = useRef(null)
+  const ttsRef = useRef({ text: '', url: '', promise: null })   // cache เสียงที่ปั้นล่วงหน้า
 
   useEffect(() => {
     fetch('/api/plants').then(r => r.json()).then(d => setPlants(d.plants || [])).catch(() => {})
@@ -149,7 +150,7 @@ export default function AskDemo() {
     setMicHint('🔴 กำลังฟัง... พูดคำถามแล้วกดหยุด')
   }
 
-  // ── อ่านคำตอบเป็นเสียง JARVIS (edge-tts) + fallback เสียงเบราว์เซอร์ ──
+  // ── อ่านคำตอบเป็นเสียง JARVIS (Gemini TTS) + fallback เสียงเบราว์เซอร์ ──
   function cleanForSpeech(t) {
     // ตัดรหัสเคส (MTN-2026-0004 / MTN-080726-01) + วงเล็บ/ก้านที่เหลือว่าง — ให้เสียงอ่านแต่เนื้อหา
     return (t || '')
@@ -159,17 +160,41 @@ export default function AskDemo() {
       .trim()
   }
 
+  // ยิง Gemini TTS -> คืน object URL ของเสียง (โยน error ถ้าไม่ได้ -> ให้ speak fallback)
+  async function fetchTtsUrl(text) {
+    const fd = new FormData()
+    fd.append('text', text)
+    const res = await fetch('/api/tts', { method: 'POST', body: fd })
+    if (!res.ok) throw new Error('tts-unavailable')
+    return URL.createObjectURL(await res.blob())
+  }
+
+  // prefetch: พอคำตอบมา ปั้นเสียงไว้เลย (ระหว่างผู้ใช้อ่าน) — Gemini TTS ~6s ซ่อนได้หมด
+  useEffect(() => {
+    const text = cleanForSpeech(answer?.answer)
+    const cache = ttsRef.current
+    if (cache.url) { URL.revokeObjectURL(cache.url); cache.url = '' }   // ทิ้งเสียงคำตอบเก่า
+    cache.text = text; cache.promise = null
+    if (!text) return
+    cache.promise = fetchTtsUrl(text)
+      .then(url => { cache.url = url; return url })
+      .catch(() => null)                 // ปั้นล่วงหน้าไม่ได้ -> ปล่อย speak ยิงสด/fallback
+  }, [answer])
+
   async function speak() {
     const text = cleanForSpeech(answer?.answer)
     if (!text || speaking) return
     setSpeaking(true)
     try {
-      const fd = new FormData()
-      fd.append('text', text)
-      const res = await fetch('/api/tts', { method: 'POST', body: fd })
-      if (!res.ok) throw new Error('tts-unavailable')
+      const cache = ttsRef.current
+      let url = null
+      if (cache.text === text) {
+        if (cache.url) url = cache.url                    // ปั้นเสร็จแล้ว -> ใช้ทันที (replay ไว)
+        else if (cache.promise) url = await cache.promise // กำลังปั้น -> รอ
+      }
+      if (!url) { url = await fetchTtsUrl(text); cache.text = text; cache.url = url }  // ยิงสด + cache ไว้ replay
       const player = playerRef.current
-      player.src = URL.createObjectURL(await res.blob())
+      player.src = url
       await player.play()
     } catch (e) {
       const u = new SpeechSynthesisUtterance(text)

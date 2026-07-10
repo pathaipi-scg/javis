@@ -40,7 +40,8 @@ export default function App() {
   useEffect(() => {
     fetch('/api/models').then(r => r.json()).then(d => {
       setModels({ local: d.local || [], api: d.api || [] })
-      setModel(d.default || d.local?.[0]?.id || '')
+      // default = GPT (Azure api) ถ้ามี; ไม่มีค่อยตก default backend / local ตัวแรก
+      setModel(d.api?.[0]?.id || d.default || d.local?.[0]?.id || '')
     }).catch(() => {})
   }, [])
 

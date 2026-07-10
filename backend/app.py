@@ -218,15 +218,13 @@ class AskIn(BaseModel):
 # api:   ค่า value = "azure:<deployment>" — rag.py จะ route ไป Azure client
 def _model_options():
     from llm import QWEN_MODEL
-    from rag import N8N_READY
+    from rag import AZURE_READY, AZURE_DEPLOYMENT
     api_models = []
-    # เฉพาะเลน n8n proxy (ปลอดภัย — key ไม่อยู่ในแอป, คุมกลางที่ n8n)
-    # เลน Azure ตรง (azure:*) ยังใช้ได้ในโค้ด rag.py แต่ไม่โชว์ใน dropdown แล้ว
-    # (ตัดออกเพราะเรียก Azure ตรงจากแอป = key อยู่ในแอป ไม่ปลอดภัยเท่าผ่าน n8n)
-    if N8N_READY:
+    # ยิง Azure OpenAI ตรงจากแอป (เลน n8n proxy ยังมีในโค้ด rag.py แต่ไม่โชว์ใน dropdown)
+    if AZURE_READY:
         api_models.append({
-            "id": "n8n:gpt-5.4-mini",
-            "label": "GPT-5.4 Mini (ผ่าน n8n · ปลอดภัย)",
+            "id": f"azure:{AZURE_DEPLOYMENT}",
+            "label": "GPT-5.4 Mini (Azure)",
         })
     return {
         "local": [
@@ -521,7 +519,7 @@ async def api_case_save(body: CaseSaveIn):
 @app.post("/api/tts")
 async def tts_endpoint(request: Request):
     """อ่านคำตอบเป็นเสียง JARVIS. ถ้า TTS ใช้ไม่ได้ -> 503 ให้ฝั่งเว็บ fallback
-    synthesize คืน (bytes, media_type) — windows=audio/wav, edge=audio/mpeg"""
+    synthesize คืน (bytes, media_type) — gemini/windows = audio/wav"""
     f = await request.form()
     result = await tts.synthesize(f.get("text", ""))
     if result is None:
