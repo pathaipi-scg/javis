@@ -81,6 +81,13 @@ export default function BubblePage() {
     if (f.to) qs.set('to', f.to)
     fetch('/api/bubbles?' + qs.toString()).then(r => r.json()).then(setData).catch(() => {})
   }
+
+  // เปลี่ยนค่า filter -> กรองให้เลย ไม่ต้องกดปุ่ม
+  function setFiltAndLoad(patch) {
+    const next = { ...filt, ...patch }
+    setFilt(next)
+    load(next)
+  }
   useEffect(() => { load() }, [])   // โหลดครั้งแรก
 
   // ---------- resize ----------
@@ -343,22 +350,26 @@ export default function BubblePage() {
         ))}
       </div>
 
-      {/* filter bar ล่าง */}
+      {/* filter bar ล่าง — เปลี่ยนค่าแล้วกรองทันที */}
       <div className="bub-filter">
         <label>วันที่
-          <input type="date" value={filt.from} onChange={e => setFilt({ ...filt, from: e.target.value })} />
+          <input type="date" value={filt.from} onChange={e => setFiltAndLoad({ from: e.target.value })} />
         </label>
         <span className="dash">—</span>
         <label>
-          <input type="date" value={filt.to} onChange={e => setFilt({ ...filt, to: e.target.value })} />
+          <input type="date" value={filt.to} onChange={e => setFiltAndLoad({ to: e.target.value })} />
         </label>
         <label>โรงงาน
-          <select value={filt.plant} onChange={e => setFilt({ ...filt, plant: e.target.value })}>
+          <select value={filt.plant} onChange={e => setFiltAndLoad({ plant: e.target.value })}>
             <option value="">ทุกโรงงาน</option>
             {plants.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </label>
-        <button className="bub-apply" onClick={() => load()}>กรอง</button>
+        {(filt.from || filt.to || filt.plant) && (
+          <button className="bub-clearfilt" onClick={() => setFiltAndLoad({ from: '', to: '', plant: '' })}>
+            ✕ ล้าง
+          </button>
+        )}
       </div>
 
       {/* drawer สรุปฝั่งขวา — เคสจัดกลุ่ม วันที่ -> หมวด (คลิกแถว = เปิดเคส) */}
