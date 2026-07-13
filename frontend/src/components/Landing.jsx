@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Logo, IcMic, IcStop } from './Icons.jsx'
+import { playTtsStream } from '../ttsStream.js'
 
 // หน้าแรก = JARVIS HUD ที่ "พูดถาม-ฟังตอบ" ได้จริง (voice assistant เต็มตัว)
 // flow: แตะไมค์ -> อัดเสียง (LISTENING) -> ถอด+ถาม RAG (THINKING) -> เล่นเสียงตอบ (SPEAKING) -> idle
@@ -70,7 +71,6 @@ export default function Landing({ model = '' }) {
   const timerRef = useRef(0)
   const barsRef = useRef(null)
   const playerRef = useRef(null)
-  const ttsRef = useRef({ text: '', urls: null })   // cache เสียง TTS ล่าสุด (หั่นเป็นก้อน; ฟังซ้ำ = ใช้ซ้ำ)
   const srRef = useRef(null)       // SpeechRecognition (wake word)
   const wakeModeRef = useRef(false) // อ่านค่าล่าสุดใน callback ของ SR
   const modeRef = useRef('idle')
@@ -271,39 +271,6 @@ export default function Landing({ model = '' }) {
       .trim()
   }
 
-  // ยิง Gemini TTS 1 ก้อน -> object URL
-  async function fetchTtsUrl(text) {
-    const fd = new FormData()
-    fd.append('text', text)
-    const res = await fetch('/api/tts', { method: 'POST', body: fd })
-    if (!res.ok) throw new Error('tts-unavailable')
-    return URL.createObjectURL(await res.blob())
-  }
-
-  // หั่นคำตอบเป็นก้อน: ก้อนแรก = ประโยคแรกเดี่ยวๆ (เริ่มเสียงไว) ที่เหลือรวมก้อนละ ~180 ตัว
-  function splitForSpeech(text) {
-    const parts = text.split(/(?<=[\n.!?。])\s+|(?<=ครับ|ค่ะ|คร้าบ)\s+/)
-      .map(s => s.trim()).filter(Boolean)
-    if (parts.length <= 1) return [text]
-    const chunks = [parts[0]]
-    let buf = ''
-    for (let i = 1; i < parts.length; i++) {
-      buf = buf ? buf + ' ' + parts[i] : parts[i]
-      if (buf.length >= 180) { chunks.push(buf); buf = '' }
-    }
-    if (buf) chunks.push(buf)
-    return chunks
-  }
-
-  // เล่น url ใน player แล้ว resolve ตอนจบ
-  function playUrl(url) {
-    return new Promise(res => {
-      const p = playerRef.current
-      p.src = url; p.onended = res
-      p.play().catch(res)
-    })
-  }
-
   async function speak(raw, onDone) {
     const text = cleanForSpeech(raw ?? answer?.answer)
     if (!text) { onDone ? onDone() : setMode('idle'); return }
@@ -311,18 +278,7 @@ export default function Landing({ model = '' }) {
     // มี onDone (เช่น ทักจบ->อัดต่อ) ให้มันคุม mode เอง — ไม่แวะ idle กัน SR สตาร์ทมาชนไมค์
     const backToIdle = () => { onDone ? onDone() : setMode('idle') }
     try {
-      const cache = ttsRef.current
-      if (cache.text === text && cache.urls) {          // replay: ทุกก้อน cache แล้ว -> เล่นต่อเนื่อง
-        for (const url of cache.urls) await playUrl(url)
-      } else {
-        const proms = splitForSpeech(text).map(fetchTtsUrl)   // ยิงทุกก้อน "ขนานกัน" ทันที
-        const resolved = []
-        for (const p of proms) {                        // เล่นตามลำดับ: ก้อนแรกเสร็จ ~1-2s ก็เริ่มเลย
-          const url = await p; resolved.push(url); await playUrl(url)
-        }
-        if (cache.urls) cache.urls.forEach(URL.revokeObjectURL)   // ทิ้งเสียงเก่า
-        cache.text = text; cache.urls = resolved
-      }
+      await playTtsStream(playerRef.current, text)       // streaming: เสียงแรก ~1.6s (ไม่รอทั้งก้อน)
       backToIdle()
     } catch (e) {
       const u = new SpeechSynthesisUtterance(text)       // fallback เสียงเบราว์เซอร์

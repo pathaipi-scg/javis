@@ -50,7 +50,7 @@ export default function App() {
 
   // หน้าเต็มจอ (มี topbar ของตัวเอง) — ไม่ใช้ Navbar/Footer ของแอพ
   if (route === 'graph') return <GraphPage />
-  if (route === 'dashboard') return <BubblePage />
+  if (route === 'dashboard') return <BubblePage model={model} />
 
   return (
     <div className="page">

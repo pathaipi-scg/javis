@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
 from fastapi import FastAPI, Request, Query
-from fastapi.responses import HTMLResponse, Response, JSONResponse
+from fastapi.responses import HTMLResponse, Response, JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 import os, sys, tempfile, re, time, shutil, json
 
@@ -522,6 +522,26 @@ async def tts_endpoint(request: Request):
     synthesize คืน (bytes, media_type) — gemini/windows = audio/wav"""
     f = await request.form()
     result = await tts.synthesize(f.get("text", ""))
+    if result is None:
+        return Response(status_code=503)
+    audio, media_type = result
+    return Response(content=audio, media_type=media_type)
+
+
+@app.post("/api/tts-stream")
+async def tts_stream_endpoint(request: Request):
+    """สตรีมเสียง (mp3) ทยอยส่ง -> เสียงแรก ~0.8s (เร็วกว่ารอทั้งก้อน).
+    เฉพาะ engine=openai ; engine อื่น -> ตกไป synthesize เต็มก้อนเหมือน /api/tts"""
+    f = await request.form()
+    text = (f.get("text") or "").strip()
+    if not text:
+        return Response(status_code=400)
+    if tts.TTS_ENGINE == "openai":
+        # Starlette วน sync generator ใน threadpool เอง (ไม่บล็อก event loop)
+        # error กลางสตรีม -> สตรีมขาด -> ฝั่งเว็บ fallback เสียงเบราว์เซอร์
+        return StreamingResponse(tts.stream_openai(text), media_type="audio/mpeg")
+    # engine อื่น: เต็มก้อน
+    result = await tts.synthesize(text)
     if result is None:
         return Response(status_code=503)
     audio, media_type = result

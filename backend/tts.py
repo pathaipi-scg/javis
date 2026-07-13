@@ -28,13 +28,14 @@ GEMINI_TTS_TIMEOUT = int(os.getenv("GEMINI_TTS_TIMEOUT", "60"))
 # JARVIS DSP (numpy ผ่าน PyAV): band-limit + presence + echo ห้องแคบ + normalize
 #   ให้เสียง comms/AI: ตัดเบส-ตัดไฮ + ดันย่านกลางให้คม + echo สั้น = ห้องแคบ
 #   TTS_FX=1 เปิด ; PyAV ใช้ไม่ได้ -> ข้าม คืนเสียงดิบ (graceful)
-TTS_FX = os.getenv("TTS_FX", "0").strip() not in ("0", "", "false", "no")   # default ปิด (เสียงดิบ); เปิด TTS_FX=1 ถ้าจะจูน comms/JARVIS
+TTS_FX = os.getenv("TTS_FX", "1").strip() not in ("0", "", "false", "no")   # default เปิด (comms/JARVIS band-limit ใกล้คลิปต้นฉบับ); TTS_FX=0 = เสียงดิบ
+TTS_PITCH = float(os.getenv("TTS_PITCH", "0"))               # ปรับ pitch เป็น semitone (ลบ=ทุ้มลง); 0=ปิด
 TTS_FX_HP        = float(os.getenv("TTS_FX_HP", "120"))        # highpass Hz (ตัดเบสบาง)
 TTS_FX_LP        = float(os.getenv("TTS_FX_LP", "5000"))       # lowpass Hz (ตัดไฮ)
-TTS_FX_PRESENCE   = float(os.getenv("TTS_FX_PRESENCE", "4.0")) # gain ย่านสูง (คม/สว่าง)
-TTS_FX_PRESENCE_F = float(os.getenv("TTS_FX_PRESENCE_F", "1200"))  # ความถี่เริ่มบูสต์
+TTS_FX_PRESENCE   = float(os.getenv("TTS_FX_PRESENCE", "1.0")) # gain ย่านสูง (1.0=ปิด; สูงไป=เสียงหวีด)
+TTS_FX_PRESENCE_F = float(os.getenv("TTS_FX_PRESENCE_F", "1800"))  # ความถี่เริ่มบูสต์
 TTS_FX_ECHO_MS   = float(os.getenv("TTS_FX_ECHO_MS", "22"))    # echo delay ms (ห้องแคบ)
-TTS_FX_ECHO_GAIN = float(os.getenv("TTS_FX_ECHO_GAIN", "0.16"))# echo ความดัง 0-1
+TTS_FX_ECHO_GAIN = float(os.getenv("TTS_FX_ECHO_GAIN", "0.0")) # echo ความดัง 0-1 (0=ปิด กัน comb ring)
 
 # windows: ชื่อเสียง OneCore ("" = เลือกไทยตัวแรก = Microsoft Pattara)
 TTS_WIN_VOICE = os.getenv("TTS_WIN_VOICE", "")
@@ -51,6 +52,25 @@ async def synthesize(text):
     if TTS_ENGINE == "openai":
         return _synthesize_openai(text)
     return _synthesize_gemini(text)
+
+
+def stream_openai(text):
+    """generator: yield mp3 chunks จาก gpt-4o-mini-tts แบบ streaming -> เสียงแรก ~0.8s
+    ใช้กับ /api/tts-stream (เล่นทันทีที่ byte แรกมา). ไม่ผ่าน FX/pitch (stream ต้องทยอยส่ง)"""
+    import openai_audio as oa
+    client = oa.get_client()
+    kw = dict(model=oa.TTS_MODEL, voice=oa.TTS_VOICE, input=text,
+              response_format="mp3", speed=oa.TTS_SPEED)
+    def _open():
+        try:
+            return client.audio.speech.with_streaming_response.create(instructions=oa.TTS_INSTRUCTIONS, **kw) \
+                if oa.TTS_INSTRUCTIONS else client.audio.speech.with_streaming_response.create(**kw)
+        except TypeError:
+            return client.audio.speech.with_streaming_response.create(**kw)   # lib เก่าไม่รับ instructions
+    with _open() as r:
+        for chunk in r.iter_bytes(4096):
+            if chunk:
+                yield chunk
 
 
 def _synthesize_openai(text):
@@ -144,7 +164,7 @@ def _synthesize_gemini(text):
 def _jarvis_fx(audio_bytes):
     """JARVIS DSP: audio(wav/mp3) -> EQ curve + echo + normalize -> (wav bytes, 'audio/wav').
     ใช้ PyAV decode + numpy DSP ในเครื่อง (ไม่ออกเน็ต). FX ปิด/ล้มเหลว -> คืน (input, 'audio/wav')"""
-    if not TTS_FX:
+    if not TTS_FX and not TTS_PITCH:
         return (audio_bytes, "audio/wav")
     try:
         import av, numpy as np
@@ -160,18 +180,30 @@ def _jarvis_fx(audio_bytes):
             return (audio_bytes, "audio/wav")
         x = np.concatenate(parts).astype(np.float64)
 
-        # --- band-limit + presence (zero-phase FFT) ---
-        n = len(x)
-        X = np.fft.rfft(x)
-        f = np.fft.rfftfreq(n, 1.0 / sr)
-        X[f < TTS_FX_HP] = 0.0
-        X[f > TTS_FX_LP] = 0.0
-        X[f > TTS_FX_PRESENCE_F] *= TTS_FX_PRESENCE
-        y = np.fft.irfft(X, n)
+        # --- pitch shift (semitone) ทำเสียงทุ้ม/สูง — resample แบบ tape (ทุ้มลง=ยาวขึ้นเล็กน้อย) ---
+        if TTS_PITCH:
+            pf = 2.0 ** (TTS_PITCH / 12.0)          # <1 = ทุ้มลง
+            n2 = max(1, int(round(len(x) / pf)))
+            x = np.interp(np.linspace(0, len(x) - 1, n2), np.arange(len(x)), x)
 
-        # --- echo สั้น = ห้องแคบ ---
+        if not TTS_FX:
+            y = x
+        else:
+            # --- band-limit + presence (zero-phase FFT) ---
+            # pad เป็น power-of-2 -> FFT เร็ว (ไม่ pad = ความยาวมั่ว/prime ทำ FFT ช้าเป็นวินาที)
+            n = len(x)
+            nfft = 1 << int(np.ceil(np.log2(max(n, 2))))
+            X = np.fft.rfft(x, nfft)
+            f = np.fft.rfftfreq(nfft, 1.0 / sr)
+            X[f < TTS_FX_HP] = 0.0
+            X[f > TTS_FX_LP] = 0.0
+            if TTS_FX_PRESENCE != 1.0:
+                X[f > TTS_FX_PRESENCE_F] *= TTS_FX_PRESENCE
+            y = np.fft.irfft(X, nfft)[:n]
+
+        # --- echo สั้น = ห้องแคบ (เฉพาะตอนเปิด FX) ---
         d = int(TTS_FX_ECHO_MS * 0.001 * sr)
-        if d > 0 and TTS_FX_ECHO_GAIN > 0:
+        if TTS_FX and d > 0 and TTS_FX_ECHO_GAIN > 0:
             e = np.zeros_like(y)
             e[d:] = y[:-d] * TTS_FX_ECHO_GAIN
             y = y + e

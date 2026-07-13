@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { forceSimulation, forceX, forceY, forceCollide } from 'd3-force'
+import { playTtsStream } from '../ttsStream.js'
 
 // หน้า Bubble Dashboard (#/dashboard) — เคสจริงจาก Obsidian vault เป็นฟอง
 // ฟอง = อาการ (symptom), จัดกลุ่มตาม category, ขนาดตามความรุนแรง (severity)
@@ -247,15 +248,8 @@ export default function BubblePage({ model = '' }) {
     if (!t || speaking) return
     setSpeaking(true)   // ค้างไว้จนเสียง "จบ" (onended) — orb จะได้หมุนตลอดที่พูด
     try {
-      const fd = new FormData()
-      fd.append('text', t)
-      const res = await fetch('/api/tts', { method: 'POST', body: fd })
-      if (!res.ok) throw new Error('tts')
-      const player = playerRef.current
-      player.src = URL.createObjectURL(await res.blob())
-      player.onended = () => setSpeaking(false)
-      player.onerror = () => setSpeaking(false)
-      await player.play()
+      await playTtsStream(playerRef.current, t)   // streaming: เสียงแรก ~1.6s (ไม่รอทั้งก้อน)
+      setSpeaking(false)
     } catch (e) {
       const u = new SpeechSynthesisUtterance(t)   // fallback เสียงเบราว์เซอร์
       u.lang = 'th-TH'
@@ -376,17 +370,19 @@ export default function BubblePage({ model = '' }) {
               {cats.map(([cat, list]) => (
                 <div className="bs-cat" key={cat}>
                   <h5 style={{ color: catColor[cat] }}>{cat}</h5>
-                  {list.map((c, ci) => (
-                    <button key={c.case_id + '-' + ci} className="bs-row"
-                      onClick={(ev) => openBubble({ ...c, cat }, ev)}>
-                      <i style={{ background: catColor[cat] }} />
-                      <span><b>{c.machine || c.case_id}</b> — {
-                        (c.solution || c.symptom).length > 64
-                          ? (c.solution || c.symptom).slice(0, 64) + '…'
-                          : (c.solution || c.symptom)
-                      }</span>
-                    </button>
-                  ))}
+                  {list.map((c, ci) => {
+                    // หัวเรื่อง = อาการ (เครื่อง ถ้ามี) ; ตก case_id ต่อเมื่อไม่มีทั้งคู่
+                    const title = c.machine || c.symptom || c.case_id
+                    const detailRaw = c.solution || (title === c.symptom ? '' : c.symptom) || ''
+                    const detail = detailRaw.length > 64 ? detailRaw.slice(0, 64) + '…' : detailRaw
+                    return (
+                      <button key={c.case_id + '-' + ci} className="bs-row"
+                        onClick={(ev) => openBubble({ ...c, cat }, ev)}>
+                        <i style={{ background: catColor[cat] }} />
+                        <span><b>{title}</b>{detail ? ` — ${detail}` : ''}</span>
+                      </button>
+                    )
+                  })}
                 </div>
               ))}
             </div>
