@@ -51,7 +51,7 @@ function JarvisOrb({ asking, speaking }) {
   )
 }
 
-export default function BubblePage() {
+export default function BubblePage({ model = '' }) {
   const [data, setData] = useState(null)     // {groups, total, mock}
   const [plants, setPlants] = useState([])
   const [filt, setFilt] = useState({ plant: '', from: '', to: '' })
@@ -80,13 +80,6 @@ export default function BubblePage() {
     if (f.from) qs.set('from', f.from)
     if (f.to) qs.set('to', f.to)
     fetch('/api/bubbles?' + qs.toString()).then(r => r.json()).then(setData).catch(() => {})
-  }
-
-  // เปลี่ยนค่า filter -> กรองให้เลย ไม่ต้องกดปุ่ม
-  function setFiltAndLoad(patch) {
-    const next = { ...filt, ...patch }
-    setFilt(next)
-    load(next)
   }
   useEffect(() => { load() }, [])   // โหลดครั้งแรก
 
@@ -175,7 +168,8 @@ export default function BubblePage() {
       g.cases.forEach((c, ci) => {
         const ang = (ci / g.cases.length) * Math.PI * 2
         raw.push({
-          ...c, cat: g.category, color: catColor[g.category],
+          ...c, uid: `${gi}-${ci}`,   // key ที่ไม่ซ้ำ — case_id ในvault ซ้ำได้ (React key ซ้ำ -> ฟองซ้อน)
+          cat: g.category, color: catColor[g.category],
           r: rr(c), gx: gc.x, gy: gc.y,
           x: gc.x + Math.cos(ang) * gc.R * 0.5, y: gc.y + Math.sin(ang) * gc.R * 0.5,
         })
@@ -235,7 +229,7 @@ export default function BubblePage() {
     try {
       const res = await fetch('/api/ask', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: c.symptom, plant: c.plant || filt.plant || '' }),
+        body: JSON.stringify({ question: c.symptom, plant: c.plant || filt.plant || '', model }),
       })
       if (!res.ok) throw new Error('ask-failed')
       const d = await res.json()
@@ -337,7 +331,7 @@ export default function BubblePage() {
         {!data && <div className="bub-loading">กำลังโหลด…</div>}
         {data && nodes.length === 0 && <div className="bub-loading">ไม่มีเคสตามที่กรอง</div>}
         {nodes.map((n) => (
-          <button key={n.case_id} className="bubble"
+          <button key={n.uid} className="bubble"
             style={{
               left: n.x - n.r, top: n.y - n.r, width: n.r * 2, height: n.r * 2,
               '--bc': n.color, fontSize: Math.max(12.5, Math.min(26, n.r / 3.4)),
@@ -350,26 +344,22 @@ export default function BubblePage() {
         ))}
       </div>
 
-      {/* filter bar ล่าง — เปลี่ยนค่าแล้วกรองทันที */}
+      {/* filter bar ล่าง */}
       <div className="bub-filter">
         <label>วันที่
-          <input type="date" value={filt.from} onChange={e => setFiltAndLoad({ from: e.target.value })} />
+          <input type="date" value={filt.from} onChange={e => setFilt({ ...filt, from: e.target.value })} />
         </label>
         <span className="dash">—</span>
         <label>
-          <input type="date" value={filt.to} onChange={e => setFiltAndLoad({ to: e.target.value })} />
+          <input type="date" value={filt.to} onChange={e => setFilt({ ...filt, to: e.target.value })} />
         </label>
         <label>โรงงาน
-          <select value={filt.plant} onChange={e => setFiltAndLoad({ plant: e.target.value })}>
+          <select value={filt.plant} onChange={e => setFilt({ ...filt, plant: e.target.value })}>
             <option value="">ทุกโรงงาน</option>
             {plants.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </label>
-        {(filt.from || filt.to || filt.plant) && (
-          <button className="bub-clearfilt" onClick={() => setFiltAndLoad({ from: '', to: '', plant: '' })}>
-            ✕ ล้าง
-          </button>
-        )}
+        <button className="bub-apply" onClick={() => load()}>กรอง</button>
       </div>
 
       {/* drawer สรุปฝั่งขวา — เคสจัดกลุ่ม วันที่ -> หมวด (คลิกแถว = เปิดเคส) */}
@@ -386,8 +376,8 @@ export default function BubblePage() {
               {cats.map(([cat, list]) => (
                 <div className="bs-cat" key={cat}>
                   <h5 style={{ color: catColor[cat] }}>{cat}</h5>
-                  {list.map(c => (
-                    <button key={c.case_id} className="bs-row"
+                  {list.map((c, ci) => (
+                    <button key={c.case_id + '-' + ci} className="bs-row"
                       onClick={(ev) => openBubble({ ...c, cat }, ev)}>
                       <i style={{ background: catColor[cat] }} />
                       <span><b>{c.machine || c.case_id}</b> — {

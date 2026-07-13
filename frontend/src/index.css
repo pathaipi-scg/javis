@@ -456,9 +456,8 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .bub-lg.clear { color: #ffb4b4; border-color: rgba(255,140,140,.3); }
 .bub-lg i { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 .bub-lg b { color: #8b96a3; font-weight: 600; }
-.bub-sumbtn { display: inline-flex; align-items: center; gap: 7px; background: linear-gradient(90deg, #1fb6c9, #2b7cff); border: none; color: #eafcff; font-family: inherit; font-size: 14px; font-weight: 700; letter-spacing: .01em; padding: 9px 20px; border-radius: 999px; cursor: pointer; box-shadow: 0 4px 18px rgba(43,124,255,.4); transition: transform .15s, box-shadow .15s, filter .15s; }
-.bub-sumbtn:hover { transform: translateY(-1px); box-shadow: 0 8px 26px rgba(43,124,255,.55); filter: brightness(1.08); }
-.bub-sumbtn.on { background: linear-gradient(90deg, #2b7cff, #6a4bff); }
+.bub-sumbtn { background: rgba(49,216,221,.1); border: 1px solid rgba(49,216,221,.35); color: #9ee7ea; font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 14px; border-radius: 999px; cursor: pointer; transition: background .15s; }
+.bub-sumbtn:hover, .bub-sumbtn.on { background: rgba(49,216,221,.22); color: #d3f6f8; }
 
 /* drawer สรุปฝั่งขวา */
 /* ตอน drawer เปิด: topbar/filter bar หดหลบซ้าย — legend ยังเห็นครบ ไม่โดนบัง */
@@ -509,8 +508,6 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .bub-filter select option { background: #12162a; }
 .bub-apply { background: linear-gradient(90deg, #2b6fff, #6a4bff); border: none; color: #fff; font-weight: 600; font-size: 13.5px; padding: 8px 22px; border-radius: 9px; cursor: pointer; box-shadow: 0 6px 20px rgba(96,90,255,.4); }
 .bub-apply:hover { transform: translateY(-1px); }
-.bub-clearfilt { background: rgba(255,120,120,.12); border: 1px solid rgba(255,140,140,.35); color: #ffb4b4; font-family: inherit; font-size: 13px; padding: 7px 16px; border-radius: 9px; cursor: pointer; transition: background .15s; }
-.bub-clearfilt:hover { background: rgba(255,120,120,.22); }
 
 /* กางเต็มจอ — ฟองที่คลิก "ค่อยๆ โต" (FLIP ใน JSX) เป็นวงใหญ่ซ้าย + เมฆ cause/solution ขวา + JARVIS ล่าง */
 @keyframes bub-bg-in { from { opacity: 0; } to { opacity: 1; } }
@@ -521,8 +518,8 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .bub-backbtn { position: fixed; top: 18px; left: 22px; z-index: 4; display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.16); color: #cfd8e3; font-family: inherit; font-size: 13.5px; padding: 8px 16px; border-radius: 999px; cursor: pointer; transition: background .15s, color .15s; }
 .bub-backbtn:hover { background: rgba(255,255,255,.14); color: #fff; }
 
-.bx-grid { max-width: 1440px; margin: 0 auto; min-height: 100%; padding: 60px 44px 32px; display: grid; grid-template-columns: 1fr 0.92fr auto; grid-template-rows: 1fr auto; gap: 24px 30px; }
-.bx-orbcol { display: flex; align-items: center; justify-content: center; animation: jv-fade-up .5s .6s both; }
+.bx-grid { max-width: 1260px; margin: 0 auto; min-height: 100%; padding: 66px 40px 36px; display: grid; grid-template-columns: 1.15fr 1fr auto; grid-template-rows: 1fr auto; gap: 26px 30px; }
+.bx-orbcol { display: flex; align-items: center; justify-content: center; padding: 0 8px; animation: jv-fade-up .5s .6s both; }
 .bub-expand.closing .bx-orbcol { animation: none; opacity: 0; transition: opacity .25s; }
 .bx-left { display: flex; align-items: center; justify-content: center; }
 /* วงใหญ่ = ฟองที่โตเต็มวัย — สีเดียวกับฟองเดิม, FLIP เล่นบน transform ของกล่องนี้ */
@@ -555,7 +552,7 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .bx-jmain { flex: 1; min-width: 0; }
 
 /* HUD orb ข้างกล่อง JARVIS — วงหมุนช้าตอนว่าง หมุนเร็ว+สว่างตอนคิด/พูด */
-.jorb { position: relative; flex: none; width: min(54vh, 30vw, 440px); height: min(54vh, 30vw, 440px); display: flex; align-items: center; justify-content: center; }
+.jorb { position: relative; flex: none; width: 230px; height: 230px; display: flex; align-items: center; justify-content: center; }
 .jorb svg { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 0 10px rgba(57,208,216,.35)); transition: filter .4s; }
 .jorb-r1, .jorb-r2, .jorb-r3 { transform-origin: 100px 100px; }
 .jorb-r1 { animation: jv-spin 46s linear infinite; }
@@ -565,8 +562,8 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .jorb.on .jorb-r1 { animation-duration: 3.2s; }
 .jorb.on .jorb-r2 { animation-duration: 2.4s; }
 .jorb.on .jorb-r3 { animation-duration: 5s; }
-.jorb-txt { position: relative; font-family: 'Sora', 'Anuphan', sans-serif; font-size: clamp(20px, 2.4vw, 30px); font-weight: 700; letter-spacing: .06em; color: #eaf6f7; text-shadow: 0 0 14px rgba(57,208,216,.65); }
-.jorb-status { position: absolute; bottom: 4%; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px; font-size: clamp(12px, 1.2vw, 15px); font-weight: 700; letter-spacing: .18em; color: #34d399; white-space: nowrap; }
+.jorb-txt { position: relative; font-family: 'Sora', 'Anuphan', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: .06em; color: #eaf6f7; text-shadow: 0 0 12px rgba(57,208,216,.6); }
+.jorb-status { position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; letter-spacing: .18em; color: #34d399; white-space: nowrap; }
 .jorb-status i { width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px #34d399; }
 .jorb.on .jorb-status { color: #f5a623; }
 .jorb.on .jorb-status i { background: #f5a623; box-shadow: 0 0 8px #f5a623; animation: jv-blink 1s infinite; }
