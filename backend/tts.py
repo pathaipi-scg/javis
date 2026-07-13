@@ -16,19 +16,19 @@ import base64, io, os, subprocess, tempfile, uuid, wave
 from dotenv import load_dotenv
 load_dotenv()
 
-TTS_ENGINE = os.getenv("TTS_ENGINE", "gemini").strip().lower()   # "gemini" | "windows"
+TTS_ENGINE = os.getenv("TTS_ENGINE", "openai").strip().lower()   # "openai" | "gemini" | "windows"
 
 # ---- Gemini TTS (ผ่าน endpoint บริษัท เท่านั้น) ----
 GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_BASE_URL  = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
 GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
-GEMINI_TTS_VOICE = os.getenv("GEMINI_TTS_VOICE", "Charon")   # เสียงชายทุ้ม; เทียบ Charon/Fenrir/Orus
+GEMINI_TTS_VOICE = os.getenv("GEMINI_TTS_VOICE", "").strip() or "Charon"   # ว่าง/ไม่ตั้ง -> Charon (ชายทุ้ม); กัน Gemini เลือกเสียงหญิงเอง
 GEMINI_TTS_TIMEOUT = int(os.getenv("GEMINI_TTS_TIMEOUT", "60"))
 
 # JARVIS DSP (numpy ผ่าน PyAV): band-limit + presence + echo ห้องแคบ + normalize
 #   ให้เสียง comms/AI: ตัดเบส-ตัดไฮ + ดันย่านกลางให้คม + echo สั้น = ห้องแคบ
 #   TTS_FX=1 เปิด ; PyAV ใช้ไม่ได้ -> ข้าม คืนเสียงดิบ (graceful)
-TTS_FX = os.getenv("TTS_FX", "1").strip() not in ("0", "", "false", "no")
+TTS_FX = os.getenv("TTS_FX", "0").strip() not in ("0", "", "false", "no")   # default ปิด (เสียงดิบ); เปิด TTS_FX=1 ถ้าจะจูน comms/JARVIS
 TTS_FX_HP        = float(os.getenv("TTS_FX_HP", "120"))        # highpass Hz (ตัดเบสบาง)
 TTS_FX_LP        = float(os.getenv("TTS_FX_LP", "5000"))       # lowpass Hz (ตัดไฮ)
 TTS_FX_PRESENCE   = float(os.getenv("TTS_FX_PRESENCE", "4.0")) # gain ย่านสูง (คม/สว่าง)
@@ -48,7 +48,34 @@ async def synthesize(text):
         return None
     if TTS_ENGINE == "windows":
         return _synthesize_windows(text)
+    if TTS_ENGINE == "openai":
+        return _synthesize_openai(text)
     return _synthesize_gemini(text)
+
+
+def _synthesize_openai(text):
+    """gpt-4o-mini-tts (เร็ว+steerable) -> (bytes, media_type). ล้มเหลว -> None (fallback เบราว์เซอร์)
+    wav -> ผ่าน JARVIS FX ได้ ; instructions สั่งโทน JARVIS (ตั้งใน .env)"""
+    try:
+        import openai_audio as oa
+        client = oa.get_client()
+        kw = dict(model=oa.TTS_MODEL, voice=oa.TTS_VOICE, input=text,
+                  response_format=oa.TTS_FORMAT, speed=oa.TTS_SPEED)
+        try:
+            r = client.audio.speech.create(instructions=oa.TTS_INSTRUCTIONS, **kw) if oa.TTS_INSTRUCTIONS \
+                else client.audio.speech.create(**kw)
+        except TypeError:
+            r = client.audio.speech.create(**kw)     # lib เก่าไม่รับ instructions
+        data = r.read() if hasattr(r, "read") else r.content
+        if not data:
+            return None
+        if oa.TTS_FORMAT == "wav":
+            return _jarvis_fx(data)                  # FX ในเครื่อง (ปิดด้วย TTS_FX=0 ถ้า instructions พอ)
+        mt = {"mp3": "audio/mpeg", "opus": "audio/ogg", "aac": "audio/aac", "flac": "audio/flac"}
+        return (data, mt.get(oa.TTS_FORMAT, "audio/mpeg"))
+    except Exception as e:
+        print(f"[TTS] openai ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ฝั่งเว็บจะใช้เสียงเบราว์เซอร์แทน")
+        return None
 
 
 def _synthesize_windows(text):
