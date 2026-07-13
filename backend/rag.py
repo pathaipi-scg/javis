@@ -654,10 +654,10 @@ def answer(query, k=4, plant=None, model=None):
             text = "แนวทางแก้จากเคสใกล้เคียง: " + " • ".join(sols[:3]) if sols else "ไม่พบเคสที่ตรง"
         # citation: ตัดทิ้งเฉพาะตอน "ปฏิเสธล้วน" (มีคำว่าไม่พบ + ไม่มีคำแนะนำเลย)
         # ถ้าคำตอบมีคำแนะนำจริง (วิธีแก้/ควร/ตรวจ...) ต่อให้ขึ้นต้นว่า "ไม่พบเคสตรง" ก็ยังอ้างเคส
-        # อ้างเฉพาะ rel_hits (เกี่ยวจริง) ไม่ใช่ top-4 ทั้งหมด
+        # อ้างเคสเดียวที่ตรงสุด (rel_hits[0] — เรียงจากเกี่ยวมากสุดหลัง rerank) ไม่แนบทั้งกอง
         is_pure_reject = bool(_STRONG_REJECT_RE.search(text)) or \
                          bool(_NOT_FOUND_RE.search(text) and not _ADVICE_RE.search(text))
-        citations = [] if is_pure_reject else [h["case_id"] for h in rel_hits]
+        citations = [] if is_pure_reject else [rel_hits[0]["case_id"]]
         return {"text": text, "citations": citations, "model": used}
     except Exception as e:
         print(f"[RAG] answer ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ตก mock")

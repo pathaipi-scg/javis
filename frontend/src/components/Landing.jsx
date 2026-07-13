@@ -8,12 +8,22 @@ import { playTtsStream } from '../ttsStream.js'
 
 const THEMES = {
   idle:      { ring: '#35e0ea', accent: '#f5a623', label: '#46e08a', status: 'READY',     sub: 'แตะไมค์แล้วพูดคำถามได้เลย', c: '#35e0ea' },
-  listening: { ring: '#35e0ea', accent: '#f5a623', label: '#35e0ea', status: 'LISTENING', sub: 'กำลังฟัง… พูดคำถามแล้วแตะหยุด', c: '#35e0ea' },
+  listening: { ring: '#35e0ea', accent: '#f5a623', label: '#35e0ea', status: 'LISTENING', sub: 'กำลังฟัง… พูดได้เลย เงียบสักครู่จะตัดให้เอง', c: '#35e0ea' },
   thinking:  { ring: '#7aa6dd', accent: '#f5a623', label: '#f5a623', status: 'THINKING',  sub: 'กำลังค้นเคส + คิดคำตอบ…',      c: '#f5a623' },
   speaking:  { ring: '#3fe9a0', accent: '#f5a623', label: '#3fe9a0', status: 'SPEAKING',  sub: 'กำลังตอบ…',                    c: '#3fe9a0' },
 }
 const MODE_CHIPS = ['listening', 'thinking', 'speaking']
 const N_BARS = 20
+
+// ── VAD auto-endpoint (ตัดประโยคเองเมื่อเงียบ ~1.5 วิ) ──
+// อ่านระดับเสียงจาก AnalyserNode ที่ drawMeter ใช้อยู่แล้ว — ไม่ต้อง lib เพิ่ม, ไม่แตะ backend
+const SILENCE_MS = 1500   // เงียบต่อเนื่องเท่านี้หลังเริ่มพูด = จบประโยค -> หยุดอัดเอง
+const MIN_REC_MS = 500    // อัดอย่างน้อยเท่านี้ก่อนยอมตัด (กันตัดก่อนผู้ใช้เริ่มพูด)
+const MAX_REC_MS = 15000  // อัดนานสุด กันค้างไม่รู้จบ
+const CALIB_MS   = 350    // ช่วงคาลิเบรต noise floor ตอนเริ่มอัด (กันเสียงห้อง/เครื่องจักรหลอก)
+const VAD_MARGIN = 0.020  // ต้องดังกว่า noise floor เท่านี้ถึงนับว่า "พูด"
+const VAD_MIN_TH = 0.045  // เพดานล่างของ threshold (เผื่อห้องเงียบมาก floor ~0)
+const CUT_HINT_MS = 400   // เงียบเกินเท่านี้ = โชว์ว่ากำลังจะตัด
 
 // ── Wake word "hello jarvis" ──
 // ใช้ webkitSpeechRecognition (Chrome/Edge) ฟังคำปลุกอย่างเดียว — ได้ยินแล้วค่อยเข้า Whisper
@@ -74,6 +84,8 @@ export default function Landing({ model = '' }) {
   const srRef = useRef(null)       // SpeechRecognition (wake word)
   const wakeModeRef = useRef(false) // อ่านค่าล่าสุดใน callback ของ SR
   const modeRef = useRef('idle')
+  const vadRef = useRef(null)       // สถานะ VAD ระหว่างอัด {started,lastLoud,startAt,floor,cSum,cN,cutting}
+  const [cutting, setCutting] = useState(false)  // อยู่ในช่วงเงียบ กำลังจะตัด (โชว์ UX)
 
   useEffect(() => {
     loadHistory()
@@ -151,12 +163,14 @@ export default function Landing({ model = '' }) {
   const bigTicks = ticks(56, 172, 15, t.ring, 3, 0.9, [4, 5, 17, 33], t.accent)
   const medTicks = ticks(90, 138, 7, t.ring, 1.5, 0.5, [22, 23, 61], t.accent)
 
-  // ── มิเตอร์คลื่นเสียงจริง (time-domain) ──
+  // ── มิเตอร์คลื่นเสียงจริง (time-domain) + VAD ตัดเองเมื่อเงียบ ──
   function drawMeter(analyser) {
+    const buf = new Uint8Array(analyser.fftSize)
+    analyser.getByteTimeDomainData(buf)
+
+    // วาดบาร์คลื่นเสียง (peak ต่อช่อง)
     const bars = barsRef.current?.children
     if (bars && bars.length) {
-      const buf = new Uint8Array(analyser.fftSize)
-      analyser.getByteTimeDomainData(buf)
       const step = Math.floor(buf.length / N_BARS) || 1
       for (let i = 0; i < bars.length; i++) {
         let peak = 0
@@ -167,12 +181,44 @@ export default function Landing({ model = '' }) {
         bars[i].style.height = Math.max(8, Math.min(100, peak * 160)) + '%'
       }
     }
+
+    // ระดับเสียงรวมของเฟรม (RMS) -> ตัดสินพูด/เงียบ
+    let sum = 0
+    for (let j = 0; j < buf.length; j++) { const d = (buf[j] - 128) / 128; sum += d * d }
+    const level = Math.sqrt(sum / buf.length)
+
+    const v = vadRef.current
+    if (v) {
+      const now = Date.now(), rec = now - v.startAt
+      if (rec < CALIB_MS) {
+        v.cSum += level; v.cN++; v.floor = v.cSum / v.cN   // คาลิเบรต noise floor
+      } else {
+        const th = Math.max(VAD_MIN_TH, v.floor + VAD_MARGIN)
+        if (level > th) {                                   // ได้ยินเสียงพูด
+          v.started = true; v.lastLoud = now
+          if (v.cutting) { v.cutting = false; setCutting(false) }
+        } else if (v.started) {                             // เงียบหลังเคยพูดแล้ว
+          const silent = now - v.lastLoud
+          const inCut = silent > CUT_HINT_MS
+          if (inCut !== v.cutting) { v.cutting = inCut; setCutting(inCut) }
+          if (silent > SILENCE_MS && rec > MIN_REC_MS) { stopRec(); return }
+        }
+        if (rec > MAX_REC_MS) { stopRec(); return }         // กันอัดค้าง
+      }
+    }
     rafRef.current = requestAnimationFrame(() => drawMeter(analyser))
+  }
+
+  // สั่งหยุดอัด (VAD/แตะปุ่ม) -> ไป mr.onstop เดิม: ถอด -> ถาม
+  function stopRec() {
+    const mr = recRef.current
+    if (mr && mr.state === 'recording') mr.stop()
   }
 
   function stopMeter() {
     cancelAnimationFrame(rafRef.current)
     clearInterval(timerRef.current)
+    vadRef.current = null
     ctxRef.current?.close().catch(() => {})
     ctxRef.current = null
     streamRef.current?.getTracks().forEach(s => s.stop())
@@ -199,6 +245,9 @@ export default function Landing({ model = '' }) {
     const analyser = ctx.createAnalyser()
     analyser.fftSize = 512
     ctx.createMediaStreamSource(stream).connect(analyser)
+    // เริ่มสถานะ VAD -> drawMeter จะตัดอัดเองเมื่อเงียบ
+    vadRef.current = { started: false, lastLoud: 0, startAt: Date.now(), floor: 0, cSum: 0, cN: 0, cutting: false }
+    setCutting(false)
     drawMeter(analyser)
 
     const startedAt = Date.now()
@@ -211,6 +260,7 @@ export default function Landing({ model = '' }) {
     mr.ondataavailable = e => { if (e.data.size) chunks.push(e.data) }
     mr.onstop = async () => {
       stopMeter()
+      setCutting(false)
       setMode('thinking')
       setMicHint('⏳ กำลังถอดเสียง…')
       const fd = new FormData()
@@ -379,8 +429,13 @@ export default function Landing({ model = '' }) {
         <div className="hud-meter-row">
           <span className="hud-rectime">{mm}:{ss}</span>
           <div className="hud-meter" ref={barsRef}>
-            {Array.from({ length: N_BARS }).map((_, i) => <span key={i} className="bar" style={{ background: t.ring }} />)}
+            {Array.from({ length: N_BARS }).map((_, i) => <span key={i} className="bar" style={{ background: cutting ? t.accent : t.ring }} />)}
           </div>
+          {cutting && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: t.accent, letterSpacing: '.03em', whiteSpace: 'nowrap' }}>
+              ✂️ ตัดอัตโนมัติ…
+            </span>
+          )}
         </div>
       )}
 
