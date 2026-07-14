@@ -3,21 +3,19 @@ import { Logo } from './Icons.jsx'
 
 const COLS = [
   { title: 'เมนู', links: [
-    { label: 'ถาม JARVIS', href: '#/ask' },
+    { label: 'หน้าแรก', href: '#/' },
     { label: 'ป้อนเคส', href: '#/case' },
     { label: 'ค้นเคส', href: '#/search' },
     { label: 'Dashboard', href: '#/dashboard' },
   ]},
-  { title: 'หน้าเดิม (Legacy)', links: [
-    { label: 'ป้อนข้อมูล (ฟอร์มเดิม)', href: '/legacy' },
-    { label: 'ทดสอบ STT', href: '/stt' },
-    { label: 'ถาม (หน้าเดิม)', href: '/ask' },
-  ]},
-  { title: 'เทคโนโลยี', links: [
-    { label: 'LLM: Typhoon2 8B (local)', href: '#' },
-    { label: 'ค้นหา: bge-m3 embeddings', href: '#' },
-    { label: 'ถอดเสียง: faster-whisper', href: '#' },
-    { label: 'คลัง: Obsidian vault (.md)', href: '#' },
+  { title: 'เทคโนโลยี', tech: [
+    { k: 'LLM', v: 'Azure GPT-5.4-mini / Typhoon2 8B' },
+    { k: 'ค้นหา', v: 'bge-m3 + cross-encoder rerank' },
+    { k: 'ถอดเสียง (STT)', v: 'gpt-4o-transcribe / faster-whisper' },
+    { k: 'อ่านออกเสียง (TTS)', v: 'gpt-4o-mini-tts' },
+    { k: 'Backend', v: 'FastAPI' },
+    { k: 'Frontend', v: 'React 18 + Vite 5' },
+    { k: 'คลัง', v: 'Obsidian vault (.md)' },
   ]},
 ]
 
@@ -35,7 +33,18 @@ export default function Footer() {
         {COLS.map((c) => (
           <div className="footer-col" key={c.title}>
             <h4>{c.title}</h4>
-            <nav>{c.links.map((l) => <a href={l.href} key={l.label}>{l.label}</a>)}</nav>
+            {c.tech ? (
+              <nav>
+                {c.tech.map((t) => (
+                  <div className="tech-item" key={t.k}>
+                    <span className="tech-k">{t.k}</span>
+                    <span className="tech-v">{t.v}</span>
+                  </div>
+                ))}
+              </nav>
+            ) : (
+              <nav>{c.links.map((l) => <a href={l.href} key={l.label}>{l.label}</a>)}</nav>
+            )}
           </div>
         ))}
       </div>

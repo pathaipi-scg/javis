@@ -293,6 +293,38 @@ async def api_ask(body: AskIn):
     }
 
 
+def _mock_case(cid):
+    """หาเคส mock จาก _MOCK_BUBBLES/_MOCK_SEARCH ตาม case_id (ใช้ตอน vault ว่าง)"""
+    for g in _MOCK_BUBBLES["groups"]:
+        for c in g["cases"]:
+            if c["case_id"] == cid:
+                return {**c, "category": g["category"], "tags": [g["category"]]}
+    for c in _MOCK_SEARCH:
+        if c["case_id"] == cid:
+            return dict(c)
+    return None
+
+
+@app.get("/api/case/{case_id}")
+async def api_case(case_id: str):
+    """ดึงรายละเอียดเคสเดียวจาก case_id (ให้ citation ในคำตอบคลิก/โชว์ข้างได้)
+    หาในเคสจริงก่อน (rag.load_cases) ถ้าไม่เจอ/vault ว่าง -> ตกไป mock"""
+    cid = (case_id or "").strip()
+    if not cid:
+        return JSONResponse({"error": "no case_id"}, status_code=400)
+    try:
+        cases = await run_in_threadpool(rag.load_cases)
+    except Exception:
+        cases = []
+    for c in cases:
+        if c.get("case_id") == cid:
+            return {"found": True, "mock": False, "case": c}
+    mc = _mock_case(cid)
+    if mc:
+        return {"found": True, "mock": True, "case": mc}
+    return JSONResponse({"found": False, "case": None}, status_code=404)
+
+
 @app.get("/api/history")
 async def api_history():
     """ประวัติถาม-ตอบล่าสุด (ใหม่ก่อน) — log ตัวเดียวกับหน้า Jinja"""

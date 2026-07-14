@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import Navbar from './components/Navbar.jsx'
 import Landing from './components/Landing.jsx'
-import AskDemo from './components/AskDemo.jsx'
 import CasePage from './components/CasePage.jsx'
 import SearchPage from './components/SearchPage.jsx'
 import DashboardPage from './components/DashboardPage.jsx'
@@ -9,6 +8,7 @@ import BubblePage from './components/BubblePage.jsx'
 import SttPage from './components/SttPage.jsx'
 import GraphPage from './components/GraphPage.jsx'
 import Footer from './components/Footer.jsx'
+import VoiceNav from './components/VoiceNav.jsx'
 
 // routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router)
 // #/ = landing (HUD), #/ask = ถาม, #/case = ป้อนเคส, #/search = ค้นเคส,
@@ -20,7 +20,6 @@ function useRoute() {
     window.addEventListener('hashchange', onChange)
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
-  if (hash.startsWith('#/ask')) return 'ask'
   if (hash.startsWith('#/case')) return 'case'
   if (hash.startsWith('#/search')) return 'search'
   if (hash.startsWith('#/graph')) return 'graph'
@@ -48,26 +47,38 @@ export default function App() {
   // ขึ้นหน้าใหม่ให้เลื่อนกลับบนสุด
   useEffect(() => { window.scrollTo(0, 0) }, [route])
 
-  // หน้าเต็มจอ (มี topbar ของตัวเอง) — ไม่ใช้ Navbar/Footer ของแอพ
-  if (route === 'graph') return <GraphPage />
-  if (route === 'dashboard') return <BubblePage model={model} />
-
-  return (
-    <div className="page">
-      <div className="streaks">
-        <div className="streak-glow" />
-        <div className="streak-line" />
-        <div className="streak-glow2" />
-        <div className="grid" />
+  // ตัวเนื้อหาหน้า (สลับตาม route)
+  let body
+  if (route === 'graph') {
+    body = <GraphPage />                       // หน้าเต็มจอ มี topbar เอง
+  } else if (route === 'dashboard') {
+    body = <BubblePage model={model} />        // หน้าเต็มจอ มี topbar เอง
+  } else {
+    body = (
+      <div className="page">
+        <div className="streaks">
+          <div className="streak-glow" />
+          <div className="streak-line" />
+          <div className="streak-glow2" />
+          <div className="grid" />
+        </div>
+        <Navbar models={models} model={model} setModel={setModel} />
+        {route === 'home' && <Landing model={model} />}
+        {route === 'case' && <CasePage />}
+        {route === 'search' && <SearchPage />}
+        {route === 'stats' && <DashboardPage />}
+        {route === 'stt' && <SttPage />}
+        <Footer />
       </div>
-      <Navbar models={models} model={model} setModel={setModel} />
-      {route === 'home' && <Landing model={model} />}
-      {route === 'ask' && <AskDemo />}
-      {route === 'case' && <CasePage />}
-      {route === 'search' && <SearchPage />}
-      {route === 'stats' && <DashboardPage />}
-      {route === 'stt' && <SttPage />}
-      <Footer />
-    </div>
+    )
+  }
+
+  // VoiceNav อยู่ตำแหน่ง (root fragment, child[0], key คงที่) เดิมทุก route
+  // -> React ไม่ remount เวลาเปลี่ยนหน้า = ไมค์/wake ฟังต่อเนื่องข้ามหน้าได้จริง
+  return (
+    <>
+      <VoiceNav key="voicenav" route={route} model={model} />
+      {body}
+    </>
   )
 }

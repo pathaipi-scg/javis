@@ -53,7 +53,7 @@ a { color: inherit; }
 .brand-mark { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: linear-gradient(135deg,#4b7bff,#9a5cf6); box-shadow: 0 6px 20px rgba(120,90,255,.5); }
 .brand-name { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: -.02em; color: #fff; }
 .nav-links { display: flex; align-items: center; gap: 26px; margin-left: 14px; }
-.nav-links a { display: flex; align-items: center; gap: 7px; text-decoration: none; color: #c7cde0; font-size: 15px; transition: color .15s; }
+.nav-links a { display: flex; align-items: center; gap: 7px; text-decoration: none; color: #c7cde0; font-size: 15px; transition: color .15s; white-space: nowrap; }
 .nav-links a:hover { color: #fff; }
 .badge { font-family: 'Sora', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 5px; background: linear-gradient(135deg,#7c5cff,#b06bf0); color: #fff; }
 .nav-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
@@ -220,6 +220,9 @@ a { color: inherit; }
 .footer-col nav { display: flex; flex-direction: column; gap: 11px; }
 .footer-col a { text-decoration: none; color: #b6bdd6; font-size: 14.5px; transition: color .15s; }
 .footer-col a:hover { color: #fff; }
+.tech-item { display: flex; flex-direction: column; gap: 1px; font-size: 14px; }
+.tech-k { color: #8b8ff5; font-weight: 600; font-size: 12px; letter-spacing: .04em; }
+.tech-v { color: #cfd6ea; }
 .footer-bottom { max-width: 1200px; margin: 0 auto; padding: 20px 32px 40px; border-top: 1px solid rgba(255,255,255,.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; color: #6f7899; font-size: 13.5px; }
 
 /* ---------- case entry page ---------- */
@@ -428,7 +431,17 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 
 /* เลือกโมเดล — อยู่บน navbar ข้างปุ่ม "เริ่มใช้งาน" (มุมขวาบน) ธีมเดียวกัน gradient */
 .nav-model { display: flex; align-items: center; gap: 8px; }
-.nav-model-label { font-family: 'Sora', sans-serif; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #8a93ad; white-space: nowrap; }
+.nav-model-label {
+  font-family: 'Sora', sans-serif; font-size: 13px; letter-spacing: .8px; text-transform: uppercase;
+  font-weight: 600; color: #c9d1f2; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 13px; border-radius: 999px;
+  background: rgba(96,90,255,.10); border: 1px solid rgba(120,110,255,.30);
+}
+.nav-model-label::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: linear-gradient(135deg,#4b7bff,#8b5cf6); box-shadow: 0 0 6px rgba(120,110,255,.9);
+}
 .nav-model select {
   appearance: none; -webkit-appearance: none;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%23ffffff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center, linear-gradient(135deg,#4b7bff,#8b5cf6);

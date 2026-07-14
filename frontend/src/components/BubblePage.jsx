@@ -448,7 +448,7 @@ export default function BubblePage({ model = '' }) {
                   {asking && <span className="bx-thinking">กำลังคิด…</span>}
                   {!asking && ans && ans.answer}
                   {!asking && ans?.citations?.length > 0 &&
-                    <div className="bx-cites">📎 อ้างอิง: {ans.citations.join(', ')}</div>}
+                    <div className="bx-cites">📎 อ้างอิง: {ans.citations[0]}</div>}
                 </div>
               </div>
             </div>

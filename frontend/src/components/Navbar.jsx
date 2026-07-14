@@ -10,7 +10,6 @@ export default function Navbar({ models = { local: [], api: [] }, model = '', se
       </a>
       <div className="nav-links">
         <a href="#/">หน้าแรก</a>
-        <a href="#/ask">ถาม JARVIS <span className="badge">RAG</span></a>
         <a href="#/case">ป้อนเคส</a>
         <a href="#/search">ค้นเคส</a>
         <a href="#/graph">Graph</a>
@@ -36,7 +35,7 @@ export default function Navbar({ models = { local: [], api: [] }, model = '', se
             </select>
           </label>
         )}
-        <a href="#/ask" className="btn-grad">เริ่มใช้งาน</a>
+        <a href="#/" className="btn-grad">เริ่มใช้งาน</a>
       </div>
     </nav>
   )
