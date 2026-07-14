@@ -70,7 +70,7 @@ export default function Landing({ model = '' }) {
   const [recTime, setRecTime] = useState(0)
   const [history, setHistory] = useState([])
   const [histOpen, setHistOpen] = useState(false)  // sidebar ประวัติถาม-ตอบ (log เดียวกับหน้า /ask)
-  const [wakeMode, setWakeMode] = useState(false)   // toggle "ปลุกด้วยเสียง" — SR ฟังคำปลุก
+  const [wakeMode, setWakeMode] = useState(true)   // toggle "ปลุกด้วยเสียง" — เปิดค่าเริ่มต้น: เข้าหน้าแล้วฟังคำปลุกทันที
   const [heard, setHeard] = useState('')            // ข้อความล่าสุดที่ SR ถอดได้ (โชว์ให้รู้ว่าฟังอยู่)
   // model มาจาก props (dropdown อยู่บน Navbar) — Landing แค่ใช้ค่าตอนถาม
 
@@ -84,6 +84,7 @@ export default function Landing({ model = '' }) {
   const srRef = useRef(null)       // SpeechRecognition (wake word)
   const wakeModeRef = useRef(false) // อ่านค่าล่าสุดใน callback ของ SR
   const modeRef = useRef('idle')
+  const modelRef = useRef(model)    // ask() อาจถูกเรียกจาก closure เก่า (wake->อัด->ถอด) — อ่านโมเดลล่าสุดจาก ref
   const vadRef = useRef(null)       // สถานะ VAD ระหว่างอัด {started,lastLoud,startAt,floor,cSum,cN,cutting}
   const [cutting, setCutting] = useState(false)  // อยู่ในช่วงเงียบ กำลังจะตัด (โชว์ UX)
 
@@ -95,6 +96,7 @@ export default function Landing({ model = '' }) {
   // มิเรอร์ state ลง ref ให้ callback ของ SR (onend/onresult) อ่านค่าปัจจุบันได้
   useEffect(() => { wakeModeRef.current = wakeMode }, [wakeMode])
   useEffect(() => { modeRef.current = mode }, [mode])
+  useEffect(() => { modelRef.current = model }, [model])
 
   // reconcile: SR ควรฟังเฉพาะตอน wakeMode เปิด + ระบบว่าง (idle) เท่านั้น
   // — ตอนอัด/คิด/พูด ต้องปิด SR (กันแย่งไมค์ + กัน echo จับเสียงตอบตัวเอง)
@@ -300,7 +302,7 @@ export default function Landing({ model = '' }) {
       const res = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: text, plant: '', model }),
+        body: JSON.stringify({ question: text, plant: '', model: modelRef.current }),
       })
       if (!res.ok) throw new Error('bad status ' + res.status)
       const data = await res.json()
