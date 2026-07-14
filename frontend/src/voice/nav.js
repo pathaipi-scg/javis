@@ -1,11 +1,3 @@
-// ── SpeechRecognition + คำปลุก (wake word) — ใช้ร่วมกันทั้ง Landing + VoiceNav ──
-export const SR_CLASS = typeof window !== 'undefined'
-  ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null
-
-// ปลุกเมื่อได้ยินโทเคน "jarvis" — SR/STT ถอดเป็นไทยเพี้ยนได้หลายแบบ เลยครอบไว้กว้าง
-// (จะวิทย์/จาวิทย์/ยาวิทย์ = ที่ STT ถอด "jarvis" ผิดบ่อย — เพิ่มตามที่เจอจริง)
-export const WAKE_RE = /jarvis|jervis|jarvist|ta+rr?vis|ta+ris|tarr?is|travis|charvis|จาร์?วิส|จาวิส|จามิส|ยาร์?วิส|จ๊า?ร?วิส|[จยว]ะวิทย์?|[จยว]าวิทย์?|จะวิด|จาวิด|ทาริส|ทาร์?วิส/i
-
 // ── ตัวจับคำสั่งนำทางด้วยเสียง (ใช้ร่วมกันทั้ง Landing + VoiceNav) ──────────
 // STT ไทยถอด "dashboard/graph" เพี้ยนได้หลายแบบ เลยครอบสะกดกว้างๆ ไว้
 // กติกา:

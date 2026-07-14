@@ -1,18 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { playTtsStream } from '../ttsStream.js'
-import { matchNav, SR_CLASS, WAKE_RE } from '../voice/nav.js'
+import { matchNav } from '../voice/nav.js'
 
-// ── VoiceNav (Plan 1: ป้ายลอยฟังเสียงทุกหน้า) ──────────────────────────────
-// ตัวฟังเสียงเบาๆ ที่ mount ค้างทุกหน้า ยกเว้นหน้าที่มี voice ของตัวเองอยู่แล้ว
-//   - home      -> Landing มี HUD + wake ของตัวเอง (ปล่อยให้มันคุม)
-//   - dashboard -> BubblePage มี orb + ถาม JARVIS ของตัวเอง (กันไมค์/เสียงชนกัน)
-// หน้าอื่น (ask/case/search/stt/stats/graph): พูด "jarvis เปิด …" -> เปลี่ยนหน้า,
-// หรือถามคำถาม -> ตอบ+พูด โดยไม่ต้องกลับไปหน้าแรก
-//
-// โค้ด engine (wake/อัด/VAD/ถอด/ถาม/พูด) จงใจ "ก๊อป" จาก Landing แบบ self-contained
-// ตาม Plan 1 — ไม่แตะ Landing เลย ของเดิมจึงทำงานเหมือนเดิม 100%
-
-// SR_CLASS + WAKE_RE ย้ายไป ../voice/nav.js (แชร์กับ Landing)
+// ── VoiceNav — ปุ่มกดพูด (push-to-talk) ลอยทุกหน้า ────────────────────────────
+// เลิกใช้ wake word (SpeechRecognition ของเบราว์เซอร์ = ส่งเสียงไป Google ตลอดตอน idle)
+// เปลี่ยนเป็น "กดปุ่มค่อยฟัง" -> ไมค์เปิดเฉพาะตอนกด เสียงไป backend เรา (Whisper/OpenAI) เท่านั้น
+//   กด -> อัด (VAD ตัดเองเมื่อเงียบ) -> /api/transcribe -> คำสั่งนำทาง/ถาม RAG -> ตอบ+พูด
+// โชว์เฉพาะหน้าที่ไม่มี voice ของตัวเอง (home = Landing มีปุ่มไมค์เอง)
 
 // VAD auto-endpoint (ตัดประโยคเองเมื่อเงียบ) — ค่าเดียวกับ Landing
 const SILENCE_MS = 1500
@@ -22,114 +16,31 @@ const CALIB_MS   = 350
 const VAD_MARGIN = 0.020
 const VAD_MIN_TH = 0.045
 
-// คำทักตอนปลุกติด (เสียง JARVIS) — ให้รู้ว่าระบบตื่นแล้ว
-const GREETINGS = [
-  'สวัสดีครับ มีอะไรให้รับใช้ครับ',
-  'สวัสดีครับ ให้ผมช่วยอะไรดีครับ',
-  'ครับผม ว่ามาได้เลยครับ',
-]
-
-// หน้าที่ "มี voice ของตัวเอง" -> VoiceNav หยุดฟังเพื่อกันชนกัน
-// home = Landing มี wake ของตัวเอง -> VoiceNav เงียบ
-// dashboard เอาออก: BubblePage ไม่มี wake -> ให้ VoiceNav ฟังแทน (พูดสั่ง/กลับหน้าได้)
-// (BubblePage พูดตอบเฉพาะตอนคลิกฟอง อาจมี echo เข้า wake บ้าง — ยอมรับได้)
+// home = Landing มีปุ่มไมค์ push-to-talk ของตัวเอง -> VoiceNav ไม่ต้องโชว์ซ้ำ
 const OWN_VOICE_ROUTES = new Set(['home'])
 
 export default function VoiceNav({ route, model = '' }) {
-  const active = !!SR_CLASS && !OWN_VOICE_ROUTES.has(route)
+  const active = !OWN_VOICE_ROUTES.has(route)
 
   const [mode, setMode] = useState('idle')   // idle | listening | thinking | speaking
   const [hint, setHint] = useState('')
-  const [heard, setHeard] = useState('')
-  const [reply, setReply] = useState('')     // คำตอบล่าสุด (โชว์ในป้ายเล็ก)
+  const [reply, setReply] = useState('')     // คำตอบ/ผลล่าสุด (โชว์ในป้าย)
 
-  const srRef = useRef(null)
   const recRef = useRef(null)
   const streamRef = useRef(null)
   const ctxRef = useRef(null)
   const rafRef = useRef(0)
-  const timerRef = useRef(0)
   const vadRef = useRef(null)
   const playerRef = useRef(null)
-  const activeRef = useRef(active)
-  const modeRef = useRef('idle')
   const modelRef = useRef(model)
-  const srAliveRef = useRef(0)   // เวลาที่ SR มีสัญญาณล่าสุด (heartbeat) — ใช้จับ SR ตายเงียบ
 
-  useEffect(() => { activeRef.current = active }, [active])
-  useEffect(() => { modeRef.current = mode }, [mode])
   useEffect(() => { modelRef.current = model }, [model])
 
-  // reconcile: ฟังคำปลุกเฉพาะตอน active + ว่าง (idle) เท่านั้น
-  useEffect(() => {
-    if (!SR_CLASS) return
-    if (active && mode === 'idle') startWake()
-    else stopWake()
-    // ออกจากหน้า active -> ปิดไมค์ค้าง (แต่ไม่แตะ player ที่อาจกำลังพูดยืนยัน)
-    if (!active) stopMeter()
-  }, [active, mode])
+  // ออกจากหน้าที่ active (เช่นไปหน้า home) ระหว่างอัด -> ปิดไมค์ค้าง (ไม่แตะ player ที่อาจกำลังพูด)
+  useEffect(() => { if (!active) stopMeter() }, [active])
+  useEffect(() => () => stopMeter(), [])   // unmount -> ปิดไมค์
 
-  useEffect(() => () => { stopWake(); stopMeter() }, [])   // unmount รวม
-
-  // watchdog: SR ของ Chrome ตายเงียบได้ (no-speech/network/หยุดเอง) — บางทีไม่ยิง onend ด้วย
-  // เลย srRef ยังไม่ null -> ค้าง. ใช้ heartbeat: ถ้า SR ไม่มีสัญญาณเกิน 5s ตอน idle -> บังคับรีสตาร์ท
-  useEffect(() => {
-    if (!active) return
-    const id = setInterval(() => {
-      if (!wakeShouldRun()) return
-      if (!srRef.current) { startWake(); return }                 // ไม่มี SR -> ปลุกใหม่
-      if (Date.now() - srAliveRef.current > 5000) {               // SR ตายเงียบ -> ล้างทิ้ง+ปลุกใหม่
-        stopWake(); startWake()
-      }
-    }, 2000)
-    return () => clearInterval(id)
-  }, [active])
-
-  function wakeShouldRun() { return activeRef.current && modeRef.current === 'idle' }
-
-  function startWake() {
-    if (!SR_CLASS || srRef.current) return
-    const sr = new SR_CLASS()
-    sr.lang = 'th-TH'
-    sr.continuous = true
-    sr.interimResults = true
-    const beat = () => { srAliveRef.current = Date.now() }   // heartbeat: ยืนยัน SR ยังมีชีวิต
-    sr.onstart = () => { beat(); setHeard(''); setHint('🎙️ พูด “hello jarvis”') }   // ล้างคำเก่าที่ค้าง
-    sr.onaudiostart = beat
-    sr.onspeechstart = beat
-    sr.onresult = (e) => {
-      beat()
-      let txt = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) txt += e.results[i][0].transcript
-      setHeard(txt.trim().slice(-40))
-      if (WAKE_RE.test(txt)) { setHeard(''); stopWake(); onWake() }
-    }
-    sr.onerror = () => {}   // no-speech/aborted = ปกติ; ไม่ต้องรบกวน user บนหน้าอื่น
-    sr.onend = () => {
-      srRef.current = null
-      if (wakeShouldRun()) startWake()   // Chrome หยุดเองทุก ~60s -> ต่อใหม่
-    }
-    srRef.current = sr
-    srAliveRef.current = Date.now()   // seed heartbeat กัน watchdog รีสตาร์ททันทีก่อน onstart
-    // start() throw ได้ (เช่น InvalidStateError ตอนยังไม่หยุดสนิท) -> abort ให้สะอาด กัน SR ซ้อน
-    try { sr.start() } catch { try { sr.abort() } catch (e) {} ; srRef.current = null }
-  }
-
-  function stopWake() {
-    const sr = srRef.current
-    srRef.current = null
-    if (sr) { sr.onend = null; try { sr.abort() } catch (e) {} }
-  }
-
-  // ได้ยินคำปลุก -> ทักด้วยเสียงก่อน (ให้รู้ว่าปลุกติดแล้ว ไม่ต้องนั่งอ่านป้าย) -> ทักจบค่อยอัด
-  function onWake() {
-    setReply('')
-    const greet = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
-    setHint('👋 ' + greet)
-    speak(greet, () => record())
-  }
-
-  // ── อัดเสียง + VAD ตัดเองเมื่อเงียบ (ก๊อปตรรกะจาก Landing แต่ไม่มีบาร์ HUD) ──
+  // ── อัดเสียง + VAD ตัดเองเมื่อเงียบ (ตรรกะเดียวกับ Landing) ──
   function drawMeter(analyser) {
     const buf = new Uint8Array(analyser.fftSize)
     analyser.getByteTimeDomainData(buf)
@@ -161,7 +72,6 @@ export default function VoiceNav({ route, model = '' }) {
 
   function stopMeter() {
     cancelAnimationFrame(rafRef.current)
-    clearInterval(timerRef.current)
     vadRef.current = null
     ctxRef.current?.close().catch(() => {})
     ctxRef.current = null
@@ -174,7 +84,7 @@ export default function VoiceNav({ route, model = '' }) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (e) {
-      setHint('⚠️ เข้าถึงไมค์ไม่ได้')
+      setHint('⚠️ เข้าถึงไมค์ไม่ได้ — อนุญาตไมโครโฟนในเบราว์เซอร์')
       setMode('idle')
       return
     }
@@ -202,7 +112,7 @@ export default function VoiceNav({ route, model = '' }) {
         if (!res.ok) throw new Error('stt-failed')
         const data = await res.json()
         const text = (data.text || '').trim()
-        if (!text || data.is_mock) { setHint('⚠️ ไม่ได้ยินเสียง'); setMode('idle'); return }
+        if (!text || data.is_mock) { setHint('⚠️ ไม่ได้ยินเสียง — ลองใหม่'); setMode('idle'); return }
         setHint('')
         handle(text)
       } catch (e) {
@@ -212,6 +122,7 @@ export default function VoiceNav({ route, model = '' }) {
     }
     mr.start()
     setMode('listening')
+    setHint('🎙️ พูดได้เลย — เงียบสักครู่จะตัดให้เอง')
   }
 
   // ถอดเสร็จ -> เป็นคำสั่งนำทาง? เปลี่ยนหน้า+พูดยืนยัน ; ไม่ใช่ -> ถาม RAG
@@ -219,8 +130,7 @@ export default function VoiceNav({ route, model = '' }) {
     const nav = matchNav(text)
     if (nav) {
       setReply('เปิด' + nav.label)
-      // VoiceNav mount ค้าง -> พูดยืนยันได้ไม่โดนตัด (ต่างจาก Landing ตอน Plan A)
-      speak('เปิด' + nav.label, () => { setMode('idle') })
+      speak('เปิด' + nav.label, () => { setMode('idle') })   // VoiceNav mount ค้าง -> เสียงไม่โดนตัด
       window.location.hash = nav.hash
       return
     }
@@ -271,38 +181,52 @@ export default function VoiceNav({ route, model = '' }) {
     }
   }
 
+  // กดปุ่ม: idle -> อัด ; listening -> หยุดอัด (ไป transcribe) ; speaking -> หยุดพูด
+  function onButton() {
+    if (mode === 'listening') { stopRec(); return }
+    if (mode === 'speaking') { playerRef.current?.pause(); speechSynthesis.cancel(); setMode('idle'); return }
+    if (mode === 'idle') { setReply(''); setHint(''); record() }
+    // thinking: กำลังประมวลผล -> ไม่ทำอะไร
+  }
+
   // audio element ต้อง render ตลอด (แม้ป้ายซ่อน) เพื่อให้ playTtsStream มีที่เล่น
   const player = <audio ref={playerRef} style={{ display: 'none' }} />
 
-  if (!active) return player   // หน้า home/dashboard: เงียบ ไม่โชว์ป้าย แต่คง audio ไว้
+  if (!active) return player   // หน้า home: Landing คุมเอง -> เงียบ แต่คง audio ไว้
 
-  const LABELS = { idle: 'พร้อม', listening: 'กำลังฟัง', thinking: 'กำลังคิด', speaking: 'กำลังตอบ' }
+  const LABELS = { idle: '🎙️ กดเพื่อพูด', listening: '⏹ กำลังฟัง… (กดหยุด)', thinking: '⏳ กำลังคิด…', speaking: '🔊 กำลังตอบ (กดหยุด)' }
   const DOT = { idle: '#46e08a', listening: '#35e0ea', thinking: '#f5a623', speaking: '#3fe9a0' }
+  const busy = mode === 'thinking'
 
   return (
     <>
       {player}
-      <div
-        aria-live="polite"
-        style={{
-          position: 'fixed', right: 16, bottom: 16, zIndex: 60,
-          maxWidth: 320, padding: '10px 14px', borderRadius: 14,
-          background: 'rgba(12,18,28,.92)', border: '1px solid rgba(120,140,170,.28)',
-          boxShadow: '0 8px 30px -8px rgba(0,0,0,.6)', color: '#cdd8e6',
-          font: '13px/1.4 system-ui, sans-serif', backdropFilter: 'blur(6px)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+      <div style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 60, maxWidth: 320 }} aria-live="polite">
+        <button type="button" onClick={onButton} disabled={busy}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 9, width: '100%',
+            padding: '11px 16px', borderRadius: 14, cursor: busy ? 'default' : 'pointer',
+            background: mode === 'listening' ? '#35e0ea' : 'rgba(12,18,28,.94)',
+            color: mode === 'listening' ? '#04060a' : '#cdd8e6',
+            border: '1px solid rgba(120,140,170,.3)',
+            boxShadow: '0 8px 30px -8px rgba(0,0,0,.6)', backdropFilter: 'blur(6px)',
+            font: '600 14px/1.3 system-ui, sans-serif', transition: 'all .15s',
+          }}>
           <span style={{
-            width: 9, height: 9, borderRadius: '50%', background: DOT[mode],
+            width: 9, height: 9, borderRadius: '50%', background: DOT[mode], flex: '0 0 auto',
             boxShadow: `0 0 8px ${DOT[mode]}`,
             animation: mode === 'idle' ? 'none' : 'jvpulse 1.1s ease-in-out infinite',
           }} />
-          🎙️ JARVIS · {LABELS[mode]}
-        </div>
-        {hint && <div style={{ marginTop: 4, opacity: .8 }}>{hint}</div>}
-        {heard && mode === 'idle' && <div style={{ marginTop: 4, opacity: .55 }}>“{heard}”</div>}
-        {reply && <div style={{ marginTop: 6, color: '#eaf2ff' }}>{reply.slice(0, 160)}</div>}
+          <span>{LABELS[mode]}</span>
+        </button>
+        {hint && <div style={{ marginTop: 6, padding: '0 4px', color: '#9fb0c4', font: '12px/1.4 system-ui', opacity: .9 }}>{hint}</div>}
+        {reply && (
+          <div style={{
+            marginTop: 6, padding: '9px 12px', borderRadius: 12,
+            background: 'rgba(12,18,28,.94)', border: '1px solid rgba(120,140,170,.24)',
+            color: '#eaf2ff', font: '13px/1.5 system-ui', backdropFilter: 'blur(6px)',
+          }}>{reply.slice(0, 200)}</div>
+        )}
         <style>{`@keyframes jvpulse{0%,100%{opacity:.4}50%{opacity:1}}`}</style>
       </div>
     </>
