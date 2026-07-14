@@ -53,3 +53,8 @@ CLAUDE.md
 
 # plan
 /plan
+# Vosk offline model (ใหญ่ ~40MB — โหลดเองด้วย scripts/get-vosk-model หรือดู GUIDE)
+frontend/public/models/
+
+# onnxruntime wasm (คัดลอกจาก node_modules — regenerable)
+frontend/public/ort/

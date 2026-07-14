@@ -87,7 +87,7 @@ FastAPI + Python. ไม่มี DB เขียนไฟล์ `.md` ตรง
 
 ## 4. ไฟล์สำคัญ — Frontend (`frontend/src/`)
 
-React 18 + Vite. หน้าเดียว (SPA) เปลี่ยนหน้าด้วย hash (`#/ask`, `#/search`)
+React 18 + Vite. หน้าเดียว (SPA) เปลี่ยนหน้าด้วย hash (`#/`, `#/search`, `#/dashboard`)
 
 ### `App.jsx` — router + โครงหน้า
 อ่าน `#/...` จาก URL → ตัดสินว่าโชว์หน้าไหน (ไม่ต้องโหลดใหม่จาก server)
@@ -115,15 +115,25 @@ if (hash.startsWith('#/search')) return 'search'   // → วาด <SearchPage 
 ### ไฟล์เสียง/สั่งงานด้วยเสียง (feature ใหม่)
 | ไฟล์ | ทำอะไร |
 |------|--------|
-| **`voice/nav.js`** | สมองสั่งงานด้วยเสียง (แชร์ Landing+VoiceNav): `WAKE_RE` = คำปลุก "jarvis" (ครอบคำเพี้ยน จะวิทย์/taris), `matchNav(text)` = แปลงคำพูดเป็นหน้า ("เปิด dashboard" → `#/dashboard`) |
-| **`VoiceNav.jsx`** | ตัวฟังคำปลุกที่ **ลอยอยู่ทุกหน้า** (ยกเว้น `#/` ที่ Landing คุมเอง) — พูด "jarvis" ที่ไหนก็สั่งเปลี่ยนหน้า/ถามได้ โชว์ป้ายเล็กมุมขวาล่าง |
+| **`voice/oww.js`** | **คำปลุก "hey jarvis" offline** (openWakeWord): ไมค์ → melspectrogram → embedding → classifier → score รันในเบราว์เซอร์ (onnxruntime WASM) **เสียงไม่ออกเน็ต** (ตัดเน็ตยังปลุกได้). โมเดล+wasm เสิร์ฟจาก `public/models/oww/` + Vite bundle |
+| **`voice/nav.js`** | `matchNav(text)` = แปลงคำพูดเป็นหน้า ("เปิด dashboard" → `#/dashboard`) — ใช้ร่วม Landing+VoiceNav |
+| **`VoiceNav.jsx`** | ปุ่ม **"กดเพื่อพูด"** ลอยทุกหน้า (ยกเว้น `#/`) + toggle "ปลุกด้วยเสียง (offline)" — สั่งเปลี่ยนหน้า/ถามจากหน้าไหนก็ได้ |
 | `ttsStream.js` | เล่นเสียงตอบแบบสตรีม (ได้ยินเร็ว ~1.6s ไม่รอทั้งก้อน) |
 
-**สั่งงานด้วยเสียง ทำไง:** พูด **"hello jarvis"** (ปลุก) → JARVIS ทักกลับ → พูดต่อ:
+**2 วิธีเริ่มพูด** (เลือกได้ ทั้ง Landing + VoiceNav):
+- **กดปุ่มไมค์** ("แตะเพื่อพูดถาม" / "กดเพื่อพูด") — privacy สูงสุด ไมค์เปิดเฉพาะตอนกด
+- **toggle "ปลุกด้วยเสียง (offline)"** → พูด **"hey jarvis"** hands-free (openWakeWord จับในเครื่อง)
+
+พอเริ่มแล้ว: อัดคำถาม (VAD ตัดเองเมื่อเงียบ) → ถอด → `matchNav`:
 - `"เปิด dashboard"` / `"กลับหน้าแรก"` → เปลี่ยนหน้า (พูดยืนยัน "เปิด…")
 - `"ปั๊มสั่นแก้ยังไง"` → ถาม RAG ตอบ+พูด
 
-> กันค้าง: มี **heartbeat watchdog** — ถ้าตัวฟัง (SR) ตายเงียบเกิน 5 วิ จะรีสตาร์ทเอง
+> 🔒 **เลิกใช้ Google SpeechRecognition แล้ว** (เดิมส่งเสียงห้องขึ้น Google ตอนรอคำปลุก).
+> ตอนนี้คำปลุก = openWakeWord รันในเบราว์เซอร์ 100% ไม่มีเสียงออกไป non-company
+
+> 📦 โมเดลคำปลุก `frontend/public/models/oww/*.onnx` (~3.7MB) **gitignore ไว้** — clone ใหม่ต้องโหลดเอง
+> จาก openWakeWord release v0.5.1 (`melspectrogram.onnx`, `embedding_model.onnx`, `hey_jarvis_v0.1.onnx`).
+> wasm ของ onnxruntime มากับ `npm install` (Vite bundle ให้เอง)
 
 ---
 
@@ -131,16 +141,18 @@ if (hash.startsWith('#/search')) return 'search'   // → วาด <SearchPage 
 
 ### Flow A — พูดถามด้วยเสียง (หน้าแรก `#/`)
 ```
-1. พูด "hello jarvis" → ตัวฟัง (SpeechRecognition) จับคำปลุก    [Landing.jsx + nav.js]
+1. เริ่มพูด — กดปุ่มไมค์ หรือ พูด "hey jarvis" (ถ้าเปิด toggle ปลุกด้วยเสียง)
+   คำปลุก "hey jarvis" จับในเบราว์เซอร์ 100% (offline)         [oww.js]
 2. JARVIS ทักกลับ "สวัสดีครับ" → เปิดไมค์อัดคำถาม (MediaRecorder + VAD ตัดเองเมื่อเงียบ)
-3. POST /api/transcribe → Whisper ถอด → "มอเตอร์ปั๊มไหม้ แก้ยังไง"  [transcribe.py]
+3. POST /api/transcribe → ถอดเสียง → "มอเตอร์ปั๊มไหม้ แก้ยังไง"   [transcribe.py]
 4. เช็คก่อน: เป็นคำสั่งเปลี่ยนหน้ามั้ย? (matchNav)              [nav.js]
    - ใช่ ("เปิด dashboard") → เปลี่ยนหน้า + พูดยืนยัน
    - ไม่ใช่ (คำถาม) → POST /api/ask
 5. bge-m3 ค้นเคสเกี่ยว → LLM เรียบเรียงตอบ + อ้าง case_id       [rag.py]
 6. คำตอบโผล่ + JARVIS พูดออกเสียง + sidebar ซ้ายโชว์เคสที่อ้าง   [/api/case]
 ```
-> พูด "ฮัลโหล" เฉยๆ ไม่ปลุก — ต้องมี "jarvis" ด้วย. พูดครบ "hello jarvis" ถึงตื่น
+> คำปลุก = openWakeWord (โมเดลเฉพาะทาง) ไม่ใช่ STT ทั่วไป — จับ pattern เสียง "hey jarvis" โดยตรง
+> เสียงตอนรอคำปลุก **ไม่ออกเน็ตเลย** (ต่างจาก Google SR เดิม)
 
 ### Flow B — บันทึกเคสจากคลิป (บนหน้า `#/stt` หรือ pipeline)
 ```

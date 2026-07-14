@@ -2,6 +2,14 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Logo, IcMic, IcStop } from './Icons.jsx'
 import { playTtsStream } from '../ttsStream.js'
 import { matchNav } from '../voice/nav.js'
+import { createWakeListener } from '../voice/oww.js'
+
+// คำทักตอนปลุกติด (เสียง JARVIS)
+const GREETINGS = [
+  'สวัสดีครับ มีอะไรให้รับใช้ครับ',
+  'สวัสดีครับ ให้ผมช่วยอะไรดีครับ',
+  'ครับผม ว่ามาได้เลยครับ',
+]
 
 // หน้าแรก = JARVIS HUD ที่ "พูดถาม-ฟังตอบ" ได้จริง (voice assistant เต็มตัว)
 // flow: แตะไมค์ -> อัดเสียง (LISTENING) -> ถอด+ถาม RAG (THINKING) -> เล่นเสียงตอบ (SPEAKING) -> idle
@@ -70,6 +78,9 @@ export default function Landing({ model = '' }) {
   const [histOpen, setHistOpen] = useState(false)  // sidebar ประวัติถาม-ตอบ (log เดียวกับหน้า /ask)
   const [refCases, setRefCases] = useState([])      // เคสที่คำตอบอ้างถึง (โชว์ sidebar ซ้าย ไม่ต้องไปเปิดหาเอง)
   const [refOpen, setRefOpen] = useState(true)      // sidebar เคสเปิด/ปิด (เลื่อนเข้า-ออก)
+  const [wakeMode, setWakeMode] = useState(true)    // ปลุกด้วยเสียง (openWakeWord offline) — default เปิด
+  const [wakeState, setWakeState] = useState('')    // '' | loading | ready
+  const [heard, setHeard] = useState('')            // คำที่ Vosk ถอดได้ล่าสุด
   // model มาจาก props (dropdown อยู่บน Navbar) — Landing แค่ใช้ค่าตอนถาม
 
   const recRef = useRef(null)      // MediaRecorder
@@ -82,15 +93,54 @@ export default function Landing({ model = '' }) {
   const modeRef = useRef('idle')
   const modelRef = useRef(model)    // ask() อาจถูกเรียกจาก closure เก่า (wake->อัด->ถอด) — อ่านโมเดลล่าสุดจาก ref
   const vadRef = useRef(null)       // สถานะ VAD ระหว่างอัด {started,lastLoud,startAt,floor,cSum,cN,cutting}
+  const wakeRef = useRef(null)      // ตัวฟังคำปลุก Vosk
+  const wakeModeRef = useRef(false)
   const [cutting, setCutting] = useState(false)  // อยู่ในช่วงเงียบ กำลังจะตัด (โชว์ UX)
 
   useEffect(() => {
     loadHistory()
-    return () => { stopMeter() }   // ออกจากหน้า -> ปิดไมค์
+    return () => { stopMeter(); stopWake() }   // ออกจากหน้า -> ปิดไมค์ + Vosk
   }, [])
 
   useEffect(() => { modeRef.current = mode }, [mode])
   useEffect(() => { modelRef.current = model }, [model])
+  useEffect(() => { wakeModeRef.current = wakeMode }, [wakeMode])
+
+  // reconcile: ฟังคำปลุกเฉพาะตอนเปิดโหมด + ระบบว่าง (idle) เท่านั้น
+  // (ตอนอัด/คิด/พูด ปิด Vosk กันแย่งไมค์ + กัน echo จับเสียงตอบตัวเอง)
+  useEffect(() => {
+    if (wakeMode && mode === 'idle') startWake()
+    else stopWake()
+  }, [wakeMode, mode])
+
+  function startWake() {
+    if (wakeRef.current) return
+    setWakeState('loading')
+    setMicHint('⏳ โหลดคำปลุก (offline)…')
+    const wl = createWakeListener({
+      onReady: () => { setWakeState('ready'); setHeard(''); setMicHint('🎙️ พูด “hey jarvis” เพื่อเริ่ม (offline)') },
+      onHeard: (t) => setHeard(t.slice(-48)),
+      onWake: () => { setHeard(''); stopWake(); onWake() },
+      onError: () => { setWakeState(''); setMicHint('⚠️ เปิดคำปลุกไม่ได้ — ใช้ปุ่มไมค์กดพูดแทน'); setWakeMode(false) },
+    })
+    wakeRef.current = wl
+    wl.start()
+  }
+
+  function stopWake() {
+    const wl = wakeRef.current
+    wakeRef.current = null
+    if (wl) wl.stop()
+  }
+
+  // ได้ยินคำปลุก -> ทัก (พูด + โชว์บับเบิล) -> พอทักจบเปิดไมค์อัดคำถามจริง
+  function onWake() {
+    setError('')
+    const greet = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
+    setAnswer({ answer: greet, citations: [], greeting: true })
+    setMicHint('👋 ' + greet)
+    speak(greet, () => toggleMic())
+  }
 
   // คำตอบอ้างเคสไหน -> ดึงรายละเอียดเคสนั้นมาโชว์ sidebar ซ้าย (ปกติเคสเดียว)
   useEffect(() => {
@@ -410,6 +460,26 @@ export default function Landing({ model = '' }) {
         {mode === 'listening' ? <IcStop /> : <IcMic />}
         <span>{mode === 'listening' ? 'แตะเพื่อหยุด' : mode === 'speaking' ? 'ถามใหม่' : 'แตะเพื่อพูดถาม'}</span>
       </button>
+
+      {/* toggle ปลุกด้วยเสียง "jarvis" (Vosk offline — เสียงไม่ออกเน็ต) */}
+      <button type="button" className="hud-wake" onClick={() => setWakeMode(v => !v)}
+        aria-pressed={wakeMode}
+        style={{
+          marginTop: 14, padding: '9px 18px', borderRadius: 100, cursor: 'pointer',
+          fontSize: 13, fontWeight: 600, letterSpacing: '.02em',
+          border: `1px solid ${wakeMode ? hexA('#46e08a', 0.9) : 'rgba(120,140,170,.35)'}`,
+          color: wakeMode ? '#04060a' : '#9fb0c4',
+          background: wakeMode ? '#46e08a' : 'rgba(120,140,170,.08)',
+          boxShadow: wakeMode ? '0 0 20px -4px rgba(70,224,138,.7)' : 'none',
+          transition: 'all .2s',
+        }}>
+        {wakeMode
+          ? (wakeState === 'loading' ? '⏳ โหลดคำปลุก…' : '🎙️ กำลังฟัง “hey jarvis” (offline)')
+          : '🎙️ เปิดโหมดปลุกด้วยเสียง (offline)'}
+      </button>
+      {wakeMode && mode === 'idle' && heard && (
+        <div style={{ marginTop: 6, fontSize: 12, color: '#64748b', fontStyle: 'italic' }}>ได้ยิน: “{heard}”</div>
+      )}
 
       {/* ชิปสถานะ (สะท้อน mode ปัจจุบัน ไม่ใช่ปุ่มกด) */}
       <div className="hud-modes">
