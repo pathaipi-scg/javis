@@ -45,6 +45,13 @@ def _looks_like_dump(text):
     return bool(_DUMP_RE.search(text or ""))
 
 
+def _is_english(q):
+    """คำถามเป็นภาษาอังกฤษไหม = ไม่มีอักษรไทยเลย แต่มีอักษรอังกฤษ
+    ใช้ตัดสินภาษาคำตอบ (ถามอังกฤษ -> ตอบอังกฤษ) แบบ deterministic ไม่พึ่งโมเดลเดา"""
+    q = q or ""
+    return (not re.search("[฀-๿]", q)) and bool(re.search(r"[A-Za-z]", q))
+
+
 # ตาข่ายกันมโน: คำตอบต้องมีเนื้อมาจากเคสจริง ไม่ใช่ความรู้ทั่วไปที่โมเดลจำมาตอนเทรน
 # วัดด้วย char-trigram overlap: คำตอบที่ย่อยจากเคสวัดได้ ~0.54, คำตอบมโนวัดได้ ~0.06 -> 0.25 กลางช่อง
 GROUND_MIN = float(os.getenv("RAG_GROUND_MIN", "0.25"))
@@ -609,6 +616,9 @@ def answer(query, k=4, plant=None, model=None):
         if hits is None:
             return None                     # vault ว่าง/backend มีปัญหา -> ให้ app ตก mock
         where = f"โรงงาน {plant}" if plant else "ระบบ"
+        en = _is_english(query)   # คำถามอังกฤษ -> ตอบ/ข้อความปฏิเสธเป็นอังกฤษ
+        not_found = f"No relevant case found in the {plant} plant." if (en and plant) else \
+                    "No relevant case found." if en else f"ไม่พบเคสที่เกี่ยวข้องใน{where}"
         # ชั้นคัดละเอียด: cross-encoder อ่านคำถาม+เคสคู่กัน -> เกี่ยวจริงไหม (คมกว่าคะแนน embed มาก)
         rr_scores = _rerank(query, hits)
         if rr_scores is not None:
@@ -618,40 +628,60 @@ def answer(query, k=4, plant=None, model=None):
                 rel_hits = _lexical_hits(query, hits)[:k]
             if not rel_hits:
                 # ไม่เกี่ยวทั้งความหมายและคีย์เวิร์ด -> ปฏิเสธ ไม่แนบ citation ไม่เรียก LLM
-                return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": [], "model": used}
+                return {"text": not_found, "citations": [], "model": used}
         else:
             # reranker ใช้ไม่ได้ -> gate แบบเดิม: เกณฑ์คะแนน embed + margin จากตัวท็อป
             rel_min = _rel_min_for(query)
             hits = [h for h in hits if h.get("score", 0) >= rel_min][:k]
             if not hits:
-                return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": [], "model": used}
+                return {"text": not_found, "citations": [], "model": used}
             top = hits[0].get("score", 0)
             rel_hits = [h for h in hits if h.get("score", 0) >= top - _FALLBACK_MARGIN]
         ctx = _case_ctx(rel_hits)
         # prompt แยก system (กฎ) / user (ข้อมูล+คำถาม) — กันโมเดลตัวเล็กลอก context/โครง prompt ซ้ำ
         # (เลิกใช้ก้อนเดียวจบด้วย "คำตอบ:" ที่ทำให้ Typhoon พ่นข้อมูลดิบกลับมา)
+        # ตรวจภาษาคำถามใน Python (ไม่พึ่งให้โมเดลเดา) แล้วบังคับ directive ให้ชัด
+        lang_line = ("Respond ENTIRELY in English. The case data below is Thai — translate/summarize it into English. "
+                     if en else "ตอบเป็นภาษาไทยทั้งหมด แม้คำถามจะมีคำภาษาอังกฤษปนอยู่ก็ตอบเป็นภาษาไทย ")
         system_msg = (
-            "คุณคือผู้ช่วยช่างซ่อมบำรุง ตอบเป็นภาษาไทยสั้นกระชับ ใช้เฉพาะข้อมูลจากเคสที่ให้มา "
+            lang_line +
+            "คุณคือผู้ช่วยช่างซ่อมบำรุง ตอบสั้นกระชับ ใช้เฉพาะข้อมูลจากเคสที่ให้มา "
             "ห้ามลอกรหัสเคส (เช่น MTN-xxxx) ชื่อฝ่าย หรือข้อความเคสดิบออกมา ให้ย่อยเป็นคำแนะนำวิธีแก้เท่านั้น "
             "แต่ละเคสระบุโรงงาน/ฝ่ายไว้ ถ้าคำถามเจาะจงโรงงานใด ให้ตอบเฉพาะเคสของโรงงานนั้น "
             "สรุปวิธีแก้จากเคสที่ตรงกับคำถาม ห้ามเพิ่มความรู้ทั่วไปนอกเหนือจากเคส "
             "เฉพาะกรณีที่ไม่มีเคสไหนเกี่ยวกับคำถามเลย จึงตอบว่าไม่พบเคสที่ตรง"
         )
         user_msg = f"เคสที่เกี่ยวข้อง:\n{ctx}\n\nคำถาม: {query}"
+        user_msg += ("\n\nIMPORTANT: Write your ENTIRE answer in English only." if en
+                     else "\n\nสำคัญ: ตอบเป็นภาษาไทยทั้งหมดเท่านั้น")
         messages = [{"role": "system", "content": system_msg},
                     {"role": "user", "content": user_msg}]
         text = _llm_chat(messages, use_model, stop=["เคสที่เกี่ยวข้อง:", "คำถาม:"],
                          n8n_context=ctx, n8n_question=query)
         # ตาข่ายกันขยะ: ถ้าโมเดล (ตัวเล็ก) ยังเผลอลอกข้อมูลเคสดิบ (เจอ marker) หรือ stop ตัดจนเหลือว่าง
         # -> ทิ้งแล้วสรุปวิธีแก้จากเคสเกี่ยวจริงเอง (deterministic) ไม่ให้เห็นข้อมูลหลังบ้าน/คำตอบว่าง
-        if len(text) < 8 or _looks_like_dump(text):
+        if not en and (len(text) < 8 or _looks_like_dump(text)):
             sols = list(dict.fromkeys(h.get("solution", "").strip() for h in rel_hits if h.get("solution")))
-            text = "แนวทางแก้จากเคสใกล้เคียง: " + " • ".join(sols[:3]) if sols else "ไม่พบเคสที่ตรง"
+            text = (("Suggested fix from similar cases: " if en else "แนวทางแก้จากเคสใกล้เคียง: ") + " • ".join(sols[:3])) if sols else ("No matching case." if en else "ไม่พบเคสที่ตรง")
         # ตาข่ายกันมโน: คำตอบแนะนำที่เนื้อไม่ตรงกับเคสเลย = โมเดลหยิบความรู้ทั่วไปมาตอบ (hallucination)
         # -> แทนด้วยวิธีแก้จริงจากเคส (คำตอบปฏิเสธ "ไม่พบ..." ไม่ต้องเช็ค — สั้นและไม่อิงเคสโดยธรรมชาติ)
-        elif not _NOT_FOUND_RE.search(text) and _groundedness(text, ctx) < GROUND_MIN:
+        elif not en and not _NOT_FOUND_RE.search(text) and _groundedness(text, ctx) < GROUND_MIN:
             sols = list(dict.fromkeys(h.get("solution", "").strip() for h in rel_hits if h.get("solution")))
-            text = "แนวทางแก้จากเคสใกล้เคียง: " + " • ".join(sols[:3]) if sols else "ไม่พบเคสที่ตรง"
+            text = (("Suggested fix from similar cases: " if en else "แนวทางแก้จากเคสใกล้เคียง: ") + " • ".join(sols[:3])) if sols else ("No matching case." if en else "ไม่พบเคสที่ตรง")
+        # บังคับภาษาให้ตรง: GPT บางทีดื้อ (ถามไทยมีอังกฤษปน -> ตอบอังกฤษ) ไม่ฟัง prompt
+        # -> เช็คภาษาคำตอบจริง ถ้าไม่ตรง แปลซ้ำ 1 ครั้ง (deterministic ไม่พึ่งโมเดลเชื่อฟัง)
+        has_thai = bool(re.search(r"[฀-๿]", text))
+        if text and ((en and has_thai) or (not en and not has_thai)):
+            tgt = "English" if en else "Thai"
+            try:
+                tr = _llm_chat(
+                    [{"role": "system", "content": f"Translate the text to {tgt}. Output ONLY the translation, "
+                                                   "same meaning, concise. Keep codes/numbers (e.g. V-203) as-is."},
+                     {"role": "user", "content": text}], use_model)
+                if tr and len(tr.strip()) > 3:
+                    text = tr.strip()
+            except Exception:
+                pass
         # citation: ตัดทิ้งเฉพาะตอน "ปฏิเสธล้วน" (มีคำว่าไม่พบ + ไม่มีคำแนะนำเลย)
         # ถ้าคำตอบมีคำแนะนำจริง (วิธีแก้/ควร/ตรวจ...) ต่อให้ขึ้นต้นว่า "ไม่พบเคสตรง" ก็ยังอ้างเคส
         # อ้างเคสเดียวที่ตรงสุด (rel_hits[0] — เรียงจากเกี่ยวมากสุดหลัง rerank) ไม่แนบทั้งกอง
