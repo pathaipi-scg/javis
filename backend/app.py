@@ -16,13 +16,13 @@ frontend dev (แก้ UI เห็นสด): cd ../frontend && npm run dev  (
 from dotenv import load_dotenv
 load_dotenv()  # โหลด .env ก่อน import โมดูลที่อ่าน env
 
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, Header
 from fastapi.responses import HTMLResponse, Response, JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 import os, sys, tempfile, re, time, shutil, json
 
 from transcribe import transcribe_audio, WHISPER_MODEL, WHISPER_DEVICE, STT_BASE_URL
-import rag, llm, tts, vault
+import rag, llm, tts, vault, auth
 
 # บน Windows stdout ของ uvicorn เป็น cp1252 -> print ภาษาไทยใน except (log) จะ crash เอง
 # แล้วทำให้ graceful-degradation (คืน None/mock) กลายเป็น HTTP 500 แทน -> ตั้ง utf-8 กันไว้
@@ -45,6 +45,34 @@ app.add_middleware(
 )
 
 UPLOAD = tempfile.gettempdir()
+
+# ─────────────────────────────────────────────────────────────
+# ยาม /api/* — ต้องมี JWT ถึงจะผ่าน (ยกเว้นรายชื่อข้างล่าง)
+# ทำเป็น middleware ไม่ใช่แปะทีละ endpoint เพราะ "ปิดเป็นค่าเริ่มต้น":
+# เพิ่ม endpoint ใหม่วันหลัง = ถูกล็อคเองอัตโนมัติ ไม่ต้องกลัวลืมแปะ
+# (ไฟล์ React /, /assets, /models, /fonts ไม่ได้ขึ้นต้นด้วย /api/ -> โหลดหน้า login ได้ตามปกติ)
+# ─────────────────────────────────────────────────────────────
+PUBLIC_API = {"/api/login", "/api/health"}
+
+
+@app.middleware("http")
+async def require_jwt(request: Request, call_next):
+    path = request.url.path
+    # OPTIONS = CORS preflight เบราว์เซอร์ยิงมาก่อนโดยไม่แนบ Authorization -> ต้องปล่อยผ่าน
+    # ไม่งั้นหน้า React บน :5173 (dev) จะโดนบล็อกตั้งแต่ preflight เรียก API ไม่ได้เลย
+    if request.method == "OPTIONS" or not path.startswith("/api/") or path in PUBLIC_API:
+        return await call_next(request)
+    authz = request.headers.get("authorization", "")
+    prefix = "bearer "
+    if not authz.lower().startswith(prefix) or not auth.decode_token(authz[len(prefix):].strip()):
+        return JSONResponse({"error": "ต้อง login ก่อน"}, status_code=401)
+    return await call_next(request)
+
+
+@app.on_event("startup")
+async def _auth_status():
+    """บอกจำนวนบัญชีที่อ่านได้จาก .env — เพิ่มคนใน .env แล้วเลขไม่ขึ้น = ยังไม่ได้ restart / ชื่อตัวแปรผิด"""
+    print(auth.status_line())
 
 
 @app.on_event("startup")
@@ -211,6 +239,43 @@ class AskIn(BaseModel):
     question: str
     plant: str = ""      # จำกัดขอบเขตโรงงาน ("" = ทุกโรงงาน)
     model: str = ""      # โมเดลที่เลือกหน้าเว็บ ("" = ใช้ default ตาม .env)
+
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/login")
+async def api_login(body: LoginIn):
+    """login บัญชี admin (ค่าอยู่ใน .env) -> คืน JWT ไว้แนบ header: Authorization: Bearer <token>
+
+    ตอบ error กลางๆ เหมือนกันหมด ไม่บอกว่า "user ผิด" หรือ "รหัสผิด"
+    (บอกแยก = ช่วยคนเดาว่ามี user นี้จริงไหม)
+    """
+    if not auth.auth_ready():
+        # ตั้ง .env ไม่ครบ -> ปฏิเสธ ไม่ปล่อยผ่าน (fail closed) + บอก log ให้คนดูแลรู้ว่าตั้งไม่ครบ
+        print("[auth] ยังตั้ง .env ไม่ครบ (ADMIN_USERNAME / ADMIN_PASSWORD / JWT_SECRET) -> login ปิดไว้")
+        return JSONResponse({"error": "auth ยังไม่พร้อมใช้งาน"}, status_code=503)
+    if not auth.verify_login(body.username, body.password):
+        return JSONResponse({"error": "username หรือ password ไม่ถูกต้อง"}, status_code=401)
+    return {
+        "access_token": auth.create_token(body.username),
+        "token_type": "bearer",
+        "expires_in": auth.JWT_EXPIRE_MIN * 60,
+    }
+
+
+@app.get("/api/me")
+async def api_me(authorization: str = Header("")):
+    """เช็คว่า token ยังใช้ได้ไหม (ให้ frontend ถามตอนเปิดหน้า) -> คืนข้อมูล user ใน token"""
+    prefix = "bearer "
+    if not authorization.lower().startswith(prefix):
+        return JSONResponse({"error": "ไม่ได้แนบ token"}, status_code=401)
+    payload = auth.decode_token(authorization[len(prefix):].strip())
+    if not payload:
+        return JSONResponse({"error": "token ไม่ถูกต้องหรือหมดอายุ"}, status_code=401)
+    return {"username": payload.get("sub"), "role": payload.get("role")}
 
 
 # รายชื่อโมเดลให้ frontend ทำ dropdown — แยก local (Ollama) / api (คลาวด์)

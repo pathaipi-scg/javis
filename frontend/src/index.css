@@ -59,6 +59,9 @@ a { color: inherit; }
 .nav-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .btn-ghost { text-decoration: none; color: #e7eaf6; font-size: 15px; font-weight: 500; padding: 9px 18px; border-radius: 11px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.03); transition: background .15s, border-color .15s; white-space: nowrap; }
 .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); }
+/* ปุ่มออกจากระบบ — ใช้หน้าตา .btn-ghost แต่เป็น <button> เลยต้องบอก font/cursor เอง
+   (<button> ไม่รับ font ของหน้าเหมือน <a> และไม่ขึ้นมือชี้) */
+.btn-logout { font-family: 'Anuphan', sans-serif; cursor: pointer; }
 .btn-grad { text-decoration: none; color: #fff; font-size: 15px; font-weight: 600; padding: 10px 20px; border-radius: 11px; background: linear-gradient(135deg,#4b7bff,#8b5cf6); box-shadow: 0 8px 26px rgba(96,90,255,.45); transition: transform .15s, box-shadow .15s; white-space: nowrap; }
 .btn-grad:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(96,90,255,.6); }
 
@@ -594,4 +597,62 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
   .bx-grid { grid-template-columns: 1fr; padding: 64px 22px 30px; }
   .bub-legend { width: 100%; margin-left: 0; }
   .bx-orbcol { display: none; }   /* จอเล็กตัด orb — เนื้อหามาก่อน */
+}
+
+/* ---------- neon วิ่งรอบกล่อง login ---------- */
+/* หลักการ: conic-gradient (ไฟวิ่ง) วางเต็มกล่อง แล้ว mask เจาะกลางทิ้ง -> เหลือแค่ขอบ
+   ต้อง @property ถึงจะ animate มุมของ conic-gradient ได้ (เบราว์เซอร์มองว่าเป็นตัวเลขจริง)
+   ถ้าเบราว์เซอร์เก่าไม่รู้จัก @property -> ไฟไม่วิ่ง แต่ขอบยังสวยอยู่ ไม่พัง */
+@property --neon-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes neon-run { to { --neon-angle: 360deg; } }
+
+/* ไฟวิ่ง 1 ดวง: โปร่งเกือบรอบวง เว้นช่วงสั้นๆ ที่ไล่สีน้ำเงิน -> ม่วง -> ชมพู */
+.login-wrap > .login-glow,
+.login-card::before {
+  background: conic-gradient(from var(--neon-angle),
+      transparent 0deg 190deg,
+      rgba(75,123,255,.7) 250deg,
+      #8b5cf6 300deg,
+      #c084fc 335deg,
+      transparent 360deg);
+  animation: neon-run 4s linear infinite;
+}
+
+.login-wrap { position: relative; }
+
+/* เส้นขอบคม: วางเต็มกล่องแล้ว mask เจาะไส้กลางออก เหลือกรอบหนา 1.5px */
+.login-card::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  padding: 1.5px;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+}
+
+/* แสงฟุ้ง: เป็น div จริง วางไว้ "ก่อน" กล่องใน DOM -> กล่องวาดทับเองตามลำดับ
+   (ไม่ใช้ ::after + z-index:-1 เพราะกล่องสร้าง stacking context ของตัวเอง
+    แสงจะไปโผล่ทับพื้นกล่องกลบตัวหนังสือแทนที่จะอยู่ข้างหลัง) */
+.login-wrap > .login-glow {
+  position: absolute;
+  inset: -5px;
+  border-radius: 22px;
+  filter: blur(15px);
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* เครื่องที่ตั้งค่า "ลดการเคลื่อนไหว" (ป้องกันไมเกรน/เวียนหัว) -> หยุดไฟวิ่ง เหลือขอบนิ่ง */
+@media (prefers-reduced-motion: reduce) {
+  .login-wrap > .login-glow,
+  .login-card::before { animation: none; }
 }

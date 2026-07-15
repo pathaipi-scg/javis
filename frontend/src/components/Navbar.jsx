@@ -1,5 +1,6 @@
 import React from 'react'
 import { Logo } from './Icons.jsx'
+import { logout } from '../auth.js'
 
 export default function Navbar({ models = { local: [], api: [] }, model = '', setModel }) {
   return (
@@ -36,6 +37,11 @@ export default function Navbar({ models = { local: [], api: [] }, model = '', se
           </label>
         )}
         <a href="#/" className="btn-grad">เริ่มใช้งาน</a>
+        {/* ลบ token ออกจากเครื่องนี้ -> App เด้งกลับหน้า login
+            (JWT ถอนฝั่ง server ไม่ได้ — ใบที่ออกไปแล้วยังใช้ได้จนหมดอายุ) */}
+        <button className="btn-ghost btn-logout" onClick={logout} title="ออกจากระบบ">
+          ออกจากระบบ
+        </button>
       </div>
     </nav>
   )

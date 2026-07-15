@@ -10,6 +10,9 @@ openai==2.44.0
 # โหลดค่าจาก .env
 python-dotenv==1.2.2
 
+# JWT สำหรับ login (auth.py) — ต้องตั้ง ADMIN_USERNAME / ADMIN_PASSWORD / JWT_SECRET ใน .env
+PyJWT>=2.9
+
 # ส่งไฟล์เสียงไปถอดที่ STT service บน server (โหมด remote)
 requests>=2.31
 

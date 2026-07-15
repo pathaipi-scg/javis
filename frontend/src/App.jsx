@@ -9,6 +9,8 @@ import SttPage from './components/SttPage.jsx'
 import GraphPage from './components/GraphPage.jsx'
 import Footer from './components/Footer.jsx'
 import VoiceNav from './components/VoiceNav.jsx'
+import Login from './components/Login.jsx'
+import { installAuthFetch, setOnUnauthorized, fetchMe } from './auth.js'
 
 // routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router)
 // #/ = landing (HUD), #/ask = ถาม, #/case = ป้อนเคส, #/search = ค้นเคส,
@@ -32,20 +34,34 @@ function useRoute() {
 export default function App() {
   const route = useRoute()
 
+  // ด่าน login: null = กำลังเช็ค token, false = ยังไม่ login, true = ผ่าน
+  // ต้องเช็คให้เสร็จก่อนค่อยยิง /api/* อื่น ไม่งั้นโดน 401 รัวตอนยังไม่ login
+  const [authed, setAuthed] = useState(null)
+  useEffect(() => {
+    installAuthFetch()                       // แนบ token ให้ทุก fetch (ต้องติดตั้งก่อนยิงอะไร)
+    setOnUnauthorized(() => setAuthed(false))  // token หมดอายุระหว่างใช้ -> เด้งกลับ login
+    fetchMe().then(me => setAuthed(!!me))
+  }, [])
+
   // โมเดลที่ใช้ตอบ — ถือที่ App เพื่อให้ Navbar เลือกได้ (dropdown อยู่มุมขวาบน)
   // แต่ Landing เป็นตัวใช้ค่าตอนถาม
   const [models, setModels] = useState({ local: [], api: [] })
   const [model, setModel] = useState('')
   useEffect(() => {
+    if (!authed) return                      // ยังไม่ login = ยังไม่ต้องโหลด
     fetch('/api/models').then(r => r.json()).then(d => {
       setModels({ local: d.local || [], api: d.api || [] })
       // default = GPT (Azure api) ถ้ามี; ไม่มีค่อยตก default backend / local ตัวแรก
       setModel(d.api?.[0]?.id || d.default || d.local?.[0]?.id || '')
     }).catch(() => {})
-  }, [])
+  }, [authed])
 
   // ขึ้นหน้าใหม่ให้เลื่อนกลับบนสุด
   useEffect(() => { window.scrollTo(0, 0) }, [route])
+
+  // กำลังเช็ค token อยู่ — ยังไม่รู้ว่า login หรือยัง ถ้าเรนเดอร์แอปเลยจะเห็นหน้าวาบก่อนเด้ง
+  if (authed === null) return <div className="page" style={{ minHeight: '100vh' }} />
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
 
   // ตัวเนื้อหาหน้า (สลับตาม route)
   let body
