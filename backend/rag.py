@@ -24,6 +24,11 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "bge-m3")
 # ตัวเช็คศัพท์เป็น string match ในเครื่อง 0ms — ไม่เพิ่มเวลาตอบ
 REL_MIN_DOMAIN = int(os.getenv("RAG_REL_MIN_DOMAIN", "35"))
 REL_MIN_OTHER  = int(os.getenv("RAG_REL_MIN", "48"))
+# เกณฑ์เฉพาะหน้า "ค้นเคส" (semantic search) — ผ่อนกว่า ask เพราะเป็นการค้นเชิงสำรวจ + พิมพ์สด
+# วัดจริง: พิมพ์ไม่จบ "มอเตอ"=43 "คอมเพรส"=46 "สายพา"=51 (ควรเจอ) ; มั่ว "เนเร่พ..."=25 (ไม่ควร)
+# in-domain (เจอ/เป็นต้นศัพท์ช่าง) 33, นอกโดเมน 40 -> พิมพ์ไม่จบยังเจอ แต่มั่วหลุด
+SEARCH_MIN_DOMAIN = int(os.getenv("RAG_SEARCH_MIN_DOMAIN", "33"))
+SEARCH_MIN_OTHER  = int(os.getenv("RAG_SEARCH_MIN", "40"))
 # คำที่บ่งว่า LLM ตอบว่า "ไม่พบ" -> ล้าง citation ทิ้ง (โมเดลเห็นเองว่า context ไม่เกี่ยว)
 _NOT_FOUND_RE = re.compile(r"ไม่พบ|ไม่มีเคส|ไม่ตรง|ไม่เกี่ยวข้อง|ข้อมูลไม่พอ|ไม่มีข้อมูล")
 # คำที่บ่งว่าคำตอบ "มีคำแนะนำจริง" -> ถึงจะขึ้นต้นว่า "ไม่พบเคสตรง" ก็ยังอ้างเคสได้
@@ -479,7 +484,10 @@ def search(query, k=8, plant=None):
             c2["score"] = max(0, round(sim * 100))
             scored.append((sim, c2))
         scored.sort(key=lambda x: -x[0])
-        return [c for _, c in scored[:k]]
+        # กรองผลใกล้เคียงจอมปลอม: พิมพ์มั่ว/นอกโดเมน bge-m3 ยังคืนเพื่อนบ้านใกล้สุด ~25% อยู่ดี
+        # -> ตัดด้วย floor เฉพาะ search (รู้จักคำพิมพ์ไม่จบ) คำถามมั่วจะเหลือ []
+        floor = _search_floor(query)
+        return [c for _, c in scored[:k] if c["score"] >= floor]
     except Exception as e:
         print(f"[RAG] search ใช้ไม่ได้ ({type(e).__name__}: {e}) -> ตก mock")
         return None
@@ -509,6 +517,18 @@ def _rel_min_for(query):
     """เลือกเกณฑ์ตามว่าคำถามมีศัพท์ช่างไหม (string match ล้วน — 0ms)"""
     q = query.casefold()
     return REL_MIN_DOMAIN if any(w in q for w in _domain_vocab()) else REL_MIN_OTHER
+
+
+def _search_floor(query):
+    """เกณฑ์ score หน้าค้นเคส — รู้จัก "พิมพ์ไม่จบ" ด้วย (เช่น "มอเตอ" = ต้นคำ "มอเตอร์")
+    in-domain: เจอศัพท์ช่างในคำถาม หรือคำถาม(>=2)เป็นส่วนต้นของศัพท์ช่าง -> เกณฑ์ผ่อน
+    ไม่งั้น (มั่ว/นอกโดเมน) -> เกณฑ์สูงกว่า กันเพื่อนบ้านจอมปลอม"""
+    q = query.casefold().strip()
+    vocab = _domain_vocab()
+    hit = any(w in q for w in vocab)
+    if not hit and len(q) >= 2:
+        hit = any(q in w for w in vocab)   # พิมพ์ค้าง -> match ต้นคำศัพท์ช่าง
+    return SEARCH_MIN_DOMAIN if hit else SEARCH_MIN_OTHER
 
 
 # คำถามเชิงวิเคราะห์ (นับ/สรุป/ภาพรวม) — คำตอบอยู่ที่การมองเคส "ทั้งกอง" ไม่ใช่จับคู่รายเคส

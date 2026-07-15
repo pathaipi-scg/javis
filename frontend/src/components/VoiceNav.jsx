@@ -183,7 +183,9 @@ export default function VoiceNav({ route, model = '' }) {
     const nav = matchNav(text)
     if (nav) {
       setReply('เปิด' + nav.label)
-      speak('เปิด' + nav.label, () => { setMode('idle') })   // VoiceNav mount ค้าง -> เสียงไม่โดนตัด
+      // พูดพร้อมเปลี่ยนหน้าเลย — เสียงเล่นบน <audio> ที่ VoiceNav คงไว้ตลอด (persistent + คืน
+      // Fragment รูปเดิมทั้ง active/inactive -> React ไม่ remount audio -> src stream ไม่หาย)
+      speak('เปิด' + nav.label, () => { setMode('idle') })
       window.location.hash = nav.hash
       return
     }
@@ -245,7 +247,10 @@ export default function VoiceNav({ route, model = '' }) {
   // audio element ต้อง render ตลอด (แม้ป้ายซ่อน) เพื่อให้ playTtsStream มีที่เล่น
   const player = <audio ref={playerRef} style={{ display: 'none' }} />
 
-  if (!active) return player   // หน้า home: Landing คุมเอง -> เงียบ แต่คง audio ไว้
+  // หน้า home: Landing คุมเอง -> ซ่อน UI แต่คง audio ไว้ในโครง Fragment รูปเดิม
+  // (คืน <>{player}</> ไม่ใช่ player เดี่ยว — child[0] เป็น audio เหมือน active -> React ไม่ remount
+  //  -> เสียงยืนยันที่กำลังสตรีมตอนเปลี่ยนไป home ไม่โดนตัด)
+  if (!active) return <>{player}</>
 
   const LABELS = { idle: '🎙️ กดเพื่อพูด', listening: '⏹ กำลังฟัง… (กดหยุด)', thinking: '⏳ กำลังคิด…', speaking: '🔊 กำลังตอบ (กดหยุด)' }
   const DOT = { idle: '#46e08a', listening: '#35e0ea', thinking: '#f5a623', speaking: '#3fe9a0' }

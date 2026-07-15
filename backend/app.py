@@ -418,8 +418,9 @@ async def api_case_preview(request: Request):
 
 
 @app.get("/api/search")
-async def api_search(q: str = "", plant: str = ""):
-    """ค้นเคส semantic (bge-m3) — เวอร์ชัน JSON ของ /search"""
+async def api_search(q: str = "", plant: str = "", log: int = 1):
+    """ค้นเคส semantic (bge-m3) — เวอร์ชัน JSON ของ /search
+    log=0 -> ค้นสดขณะพิมพ์ (realtime) ไม่บันทึกประวัติ กันสแปมทุกคีย์"""
     q = q.strip()
     plant = plant.strip()
     if not q:
@@ -428,7 +429,8 @@ async def api_search(q: str = "", plant: str = ""):
     mock = results is None
     if mock:
         results = _MOCK_SEARCH
-    _log_search(q, plant, results, mock)
+    if log:
+        _log_search(q, plant, results, mock)
     facet = {}
     for r in results:
         for t in r["tags"]:

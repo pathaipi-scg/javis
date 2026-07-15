@@ -40,7 +40,7 @@ python app.py            # http://127.0.0.1:5000
 ```
 A local venv already exists at `backend/.venv` (Python 3.12, faster-whisper + CUDA installed). Invoke it directly without activating: `.\.venv\Scripts\python.exe app.py`.
 
-Editing the UI (live reload): also run `cd frontend && npm run dev` (:5173, proxies `/api` → :5000). **After changing frontend code you must `npm run build`** for :5000 to reflect it — the dev server auto-reloads, the built `dist/` does not.
+Editing the UI (live reload): also run `cd frontend && npm run dev` (:5173, proxies `/api` → :5000). **While developing you do NOT need to `npm run build` every change** — test at **:5173** (Vite hot-reloads the frontend) and the backend auto-reloads too (`app.py` runs uvicorn with `reload=True`, so saving a `.py` restarts the server). `npm run build` is only needed to refresh the **production** bundle served by FastAPI at **:5000** (`dist/` does not auto-update) — build before committing/handing off, not on every edit.
 
 `faster-whisper` is commented out in `requirements.txt` — install it separately (`pip install faster-whisper`) only when you want real transcription; otherwise the mock runs.
 

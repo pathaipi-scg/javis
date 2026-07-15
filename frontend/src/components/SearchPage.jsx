@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 // หน้าค้นเคส — semantic search (bge-m3) จากเคสจริงใน vault
 
@@ -11,6 +11,7 @@ export default function SearchPage() {
   const [error, setError] = useState('')
   const [history, setHistory] = useState([])
   const [histOpen, setHistOpen] = useState(false)   // sidebar ประวัติค้นหา (แบบหน้าถาม)
+  const reqRef = useRef(0)   // token กัน response เก่ามาทับผลใหม่ (พิมพ์สด request ไล่กันเป็นชุด)
 
   useEffect(() => {
     fetch('/api/plants').then(r => r.json()).then(d => setPlants(d.plants || [])).catch(() => {})
@@ -27,25 +28,41 @@ export default function SearchPage() {
       .catch(() => {})
   }
 
-  async function search(e, qOverride, plantOverride) {
-    e?.preventDefault()
-    const text = (qOverride ?? q).trim()
-    const pl = plantOverride ?? plant
-    if (!text || loading) return
+  // ยิงค้นจริง — log=true บันทึกประวัติ (กดค้น/คลิกประวัติ), log=false ค้นสดขณะพิมพ์ (ไม่บันทึก)
+  async function runSearch(text, pl, log) {
+    text = text.trim()
+    if (!text) { setData(null); setError(''); return }
+    const rid = ++reqRef.current      // request ล่าสุด — ผลที่มาช้ากว่านี้จะถูกทิ้ง
     setLoading(true)
     setError('')
     try {
-      const params = new URLSearchParams({ q: text, plant: pl })
+      const params = new URLSearchParams({ q: text, plant: pl, log: log ? '1' : '0' })
       const res = await fetch('/api/search?' + params)
       if (!res.ok) throw new Error('bad status ' + res.status)
-      setData(await res.json())
-      loadHistory()               // ค้นเสร็จ log ฝั่ง backend แล้ว -> รีเฟรชรายการ
+      const json = await res.json()
+      if (rid !== reqRef.current) return   // มี request ใหม่กว่าแล้ว -> ทิ้งผลเก่า กันกระพริบ
+      setData(json)
+      if (log) loadHistory()               // เฉพาะค้นจริง -> รีเฟรชรายการประวัติ
     } catch (e) {
-      setError('ค้นหาไม่ได้ — ตรวจว่ารัน backend (demo/app.py) ที่พอร์ต 5000 แล้ว')
+      if (rid === reqRef.current) setError('ค้นหาไม่ได้ — ตรวจว่ารัน backend (app.py) ที่พอร์ต 5000 แล้ว')
     } finally {
-      setLoading(false)
+      if (rid === reqRef.current) setLoading(false)
     }
   }
+
+  // กดปุ่มค้น / คลิกประวัติ -> ค้นจริง (บันทึกประวัติ)
+  function search(e, qOverride, plantOverride) {
+    e?.preventDefault()
+    runSearch(qOverride ?? q, plantOverride ?? plant, true)
+  }
+
+  // ค้นสดขณะพิมพ์ — debounce 300ms กันยิงทุกคีย์ ; q ว่าง -> ล้างผล ; ไม่บันทึกประวัติ
+  useEffect(() => {
+    const text = q.trim()
+    if (!text) { setData(null); return }
+    const id = setTimeout(() => runSearch(text, plant, false), 300)
+    return () => clearTimeout(id)
+  }, [q, plant])
 
   return (
     <section className="case-wrap">
