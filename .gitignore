@@ -58,3 +58,6 @@ frontend/public/models/
 
 # onnxruntime wasm (คัดลอกจาก node_modules — regenerable)
 frontend/public/ort/
+
+# demo UI
+voice_demo.html

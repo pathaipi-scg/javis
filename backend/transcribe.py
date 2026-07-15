@@ -93,17 +93,24 @@ def _transcribe_openai(path):
     ใส่ prompt anchor ไทย + กันหลอนเป็นลาวตอนเสียงสั้น/ไม่ชัด"""
     import openai_audio as oa
     client = oa.get_client()
+    # auto = ตรวจภาษาเอง -> ไม่ล็อก language + ใช้ prompt กลาง (ถอดตามภาษาที่พูดจริง ไทย/อังกฤษ)
+    auto = oa.STT_LANG.lower() in ("", "auto")
+    prompt = oa.STT_PROMPT_AUTO if auto else oa.STT_PROMPT
+    kwargs = {"model": oa.STT_MODEL, "prompt": prompt}
+    if not auto:
+        kwargs["language"] = oa.STT_LANG
     with open(path, "rb") as f:
         try:
-            tr = client.audio.transcriptions.create(
-                model=oa.STT_MODEL, file=f, language=oa.STT_LANG, prompt=oa.STT_PROMPT)
+            tr = client.audio.transcriptions.create(file=f, **kwargs)
         except TypeError:
             f.seek(0)
-            tr = client.audio.transcriptions.create(model=oa.STT_MODEL, file=f, language=oa.STT_LANG)
+            kwargs.pop("prompt", None)
+            tr = client.audio.transcriptions.create(file=f, **kwargs)
     text = (getattr(tr, "text", "") or "").strip()
     if not text:
         raise RuntimeError("openai STT คืนข้อความว่าง")
     # กันหลอน: ถ้าผลเป็นอักษรลาว (U+0E80–U+0EFF) เป็นส่วนใหญ่ = เสียงไม่ชัด -> ให้ถือว่าไม่พบเสียง
+    # (auto: พูดอังกฤษ -> ไทย/ลาว = 0 ทั้งคู่ -> ผ่าน guard ปกติ)
     lao = sum(1 for c in text if "຀" <= c <= "໿")
     thai = sum(1 for c in text if "฀" <= c <= "๿")
     if lao > thai:

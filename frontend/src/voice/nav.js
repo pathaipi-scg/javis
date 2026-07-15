@@ -14,11 +14,11 @@ export const NAV_VERB = /(เปิด|ไป(ที่|ยัง)?|กลับ
 export const NAV_ROUTES = [
   { hash: '#/dashboard', label: 'แดชบอร์ด',  re: /(dashboard|dash\s?board|แด(?:ช|ส|ซ)\s?บอ|แดชบอด|แดช|หน้าฟอง|ฟองสบู่|บับเบิ้?ล|bubble)/i },
   { hash: '#/graph',     label: 'กราฟ',       re: /(graph|กร(?:า|๊า|าฟ)(?:ฟ|บ|ป|ฟความรู้)?|knowledge\s*graph|เส้นเชื่อม|แผนภาพความรู้)/i },
-  { hash: '#/search',    label: 'ค้นเคส',     re: /(ค้น\s?(เคส|หา)?|หาเคส|search|เสิร์?ช|เสิด|เสิช)/i },
+  { hash: '#/search',    label: 'ค้นเคส',     re: /(ค้น\s?(เคส|หา)?|หาเคส|\bsearch\b|เสิร์?ช|เสิด|เสิช)/i },
   { hash: '#/case',      label: 'ป้อนเคส',    re: /(ป้อนเคส|กรอกเคส|เพิ่มเคส|บันทึกเคส|ลงเคส|สร้างเคส|เคสใหม่|new\s*case|add\s*case)/i },
   { hash: '#/stt',       label: 'ทดสอบ STT',  re: /(ทดสอบ\s*(stt|เสียง)|ถอดเสียง|แปลงเสียง|\bstt\b|สปีช|speech\s*to\s*text)/i },
   { hash: '#/stats',     label: 'สรุป',       re: /(สรุป|สถิติ|รายงาน|stats|statistic|summary|report)/i },
-  { hash: '#/',          label: 'หน้าแรก',    re: /(หน้าแรก|หน้าหลัก|หน้าโฮม|โฮม|กลับบ้าน|ถามจาร์?วิส|home\s*(page)?|main\s*(page|menu)?|เมนูหลัก|แลนดิ้ง|landing)/i },
+  { hash: '#/',          label: 'หน้าแรก',    re: /(หน้าแรก|หน้าหลัก|หน้าโฮม|โฮม|กลับบ้าน|ถามจาร์?วิส|\bhome\b\s*(page)?|\bmain\b\s*(page|menu)?|เมนูหลัก|แลนดิ้ง|\blanding\b)/i },
 ]
 
 // นับ "คำ" หยาบๆ (ไทยไม่เว้นวรรค เลยนับตามช่องว่าง + ความยาว)
