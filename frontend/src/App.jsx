@@ -37,10 +37,11 @@ export default function App() {
   // ด่าน login: null = กำลังเช็ค token, false = ยังไม่ login, true = ผ่าน
   // ต้องเช็คให้เสร็จก่อนค่อยยิง /api/* อื่น ไม่งั้นโดน 401 รัวตอนยังไม่ login
   const [authed, setAuthed] = useState(null)
+  const [user, setUser] = useState(null)     // {username, role} จาก /api/me — เอาไปโชว์บน Navbar
   useEffect(() => {
     installAuthFetch()                       // แนบ token ให้ทุก fetch (ต้องติดตั้งก่อนยิงอะไร)
-    setOnUnauthorized(() => setAuthed(false))  // token หมดอายุระหว่างใช้ -> เด้งกลับ login
-    fetchMe().then(me => setAuthed(!!me))
+    setOnUnauthorized(() => { setUser(null); setAuthed(false) })  // token หมดอายุ -> เด้งกลับ login
+    fetchMe().then(me => { setUser(me); setAuthed(!!me) })
   }, [])
 
   // โมเดลที่ใช้ตอบ — ถือที่ App เพื่อให้ Navbar เลือกได้ (dropdown อยู่มุมขวาบน)
@@ -61,7 +62,8 @@ export default function App() {
 
   // กำลังเช็ค token อยู่ — ยังไม่รู้ว่า login หรือยัง ถ้าเรนเดอร์แอปเลยจะเห็นหน้าวาบก่อนเด้ง
   if (authed === null) return <div className="page" style={{ minHeight: '100vh' }} />
-  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
+  // login ผ่าน -> ถามชื่อจาก /api/me (เชื่อ token ที่ server ถอดให้ ไม่ใช่ช่องที่ผู้ใช้พิมพ์)
+  if (!authed) return <Login onSuccess={async () => { setUser(await fetchMe()); setAuthed(true) }} />
 
   // ตัวเนื้อหาหน้า (สลับตาม route)
   let body
@@ -78,7 +80,7 @@ export default function App() {
           <div className="streak-glow2" />
           <div className="grid" />
         </div>
-        <Navbar models={models} model={model} setModel={setModel} />
+        <Navbar models={models} model={model} setModel={setModel} user={user} />
         {route === 'home' && <Landing model={model} />}
         {route === 'case' && <CasePage />}
         {route === 'search' && <SearchPage />}

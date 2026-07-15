@@ -56,12 +56,20 @@ a { color: inherit; }
 .nav-links a { display: flex; align-items: center; gap: 7px; text-decoration: none; color: #c7cde0; font-size: 15px; transition: color .15s; white-space: nowrap; }
 .nav-links a:hover { color: #fff; }
 .badge { font-family: 'Sora', sans-serif; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 5px; background: linear-gradient(135deg,#7c5cff,#b06bf0); color: #fff; }
-.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+/* margin-right ติดลบ = ดันกลุ่มขวา (ชื่อ user + ออกจากระบบ) ให้ล้ำเข้าไปใน padding 32px ของ .nav
+   ทำแบบนี้แทนการลด padding ของ .nav เอง เพื่อไม่ให้กระทบโลโก้/เมนูฝั่งซ้าย. ปรับเลขนี้เพื่อขยับซ้าย-ขวา */
+.nav-actions { margin-left: auto; margin-right: -16px; display: flex; align-items: center; gap: 12px; }
 .btn-ghost { text-decoration: none; color: #e7eaf6; font-size: 15px; font-weight: 500; padding: 9px 18px; border-radius: 11px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.03); transition: background .15s, border-color .15s; white-space: nowrap; }
 .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); }
 /* ปุ่มออกจากระบบ — ใช้หน้าตา .btn-ghost แต่เป็น <button> เลยต้องบอก font/cursor เอง
    (<button> ไม่รับ font ของหน้าเหมือน <a> และไม่ขึ้นมือชี้) */
 .btn-logout { font-family: 'Anuphan', sans-serif; cursor: pointer; }
+
+/* ชื่อคนที่ login อยู่ (มุมขวาบน) */
+.nav-user { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03); }
+.nav-user-ic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg,#4b7bff,#9a5cf6); box-shadow: 0 3px 12px rgba(120,90,255,.45); flex-shrink: 0; }
+/* ชื่อยาวเกินไม่ให้ดัน navbar แตก — ตัดด้วย ... แทน (hover เห็นชื่อเต็มจาก title) */
+.nav-user-name { font-size: 14px; font-weight: 500; color: #e7eaf6; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-grad { text-decoration: none; color: #fff; font-size: 15px; font-weight: 600; padding: 10px 20px; border-radius: 11px; background: linear-gradient(135deg,#4b7bff,#8b5cf6); box-shadow: 0 8px 26px rgba(96,90,255,.45); transition: transform .15s, box-shadow .15s; white-space: nowrap; }
 .btn-grad:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(96,90,255,.6); }
 

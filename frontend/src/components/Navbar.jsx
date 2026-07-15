@@ -1,8 +1,8 @@
 import React from 'react'
-import { Logo } from './Icons.jsx'
+import { Logo, User } from './Icons.jsx'
 import { logout } from '../auth.js'
 
-export default function Navbar({ models = { local: [], api: [] }, model = '', setModel }) {
+export default function Navbar({ models = { local: [], api: [] }, model = '', setModel, user = null }) {
   return (
     <nav className="nav">
       <a href="#/" className="brand">
@@ -37,6 +37,13 @@ export default function Navbar({ models = { local: [], api: [] }, model = '', se
           </label>
         )}
         <a href="#/" className="btn-grad">เริ่มใช้งาน</a>
+        {/* ชื่อคนที่ login อยู่ — มาจาก /api/me (server ถอดจาก token) ไม่ใช่ช่องที่ผู้ใช้พิมพ์ */}
+        {user?.username && (
+          <span className="nav-user" title={`เข้าใช้งานเป็น ${user.username}`}>
+            <span className="nav-user-ic"><User /></span>
+            <span className="nav-user-name">{user.username}</span>
+          </span>
+        )}
         {/* ลบ token ออกจากเครื่องนี้ -> App เด้งกลับหน้า login
             (JWT ถอนฝั่ง server ไม่ได้ — ใบที่ออกไปแล้วยังใช้ได้จนหมดอายุ) */}
         <button className="btn-ghost btn-logout" onClick={logout} title="ออกจากระบบ">
