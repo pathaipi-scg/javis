@@ -10,7 +10,10 @@ const MODELS = {
   emb: '/models/oww/embedding_model.onnx',
   ww: '/models/oww/hey_jarvis_v0.1.onnx',
 }
-const DEFAULT_THRESHOLD = 0.4   // score เกินนี้ = ปลุก (หลังแก้ให้เสียงต่อเนื่อง peak ควรสูงขึ้น — จูนได้)
+const DEFAULT_THRESHOLD = 0.35   // score เกินนี้ = ปลุก (หลังแก้ให้เสียงต่อเนื่อง peak ควรสูงขึ้น — จูนได้)
+// ต้องได้ score เกิน threshold "ติดกัน" กี่เฟรมถึงจะปลุก (1 เฟรม = 80ms)
+// 2 เฟรม = กันนอยส์พีควูบเดียวปลุกเอง (false wake ตอนไม่มีใครพูด) แลกกับหน่วง +80ms
+const DEFAULT_TRIGGER_FRAMES = 2
 
 // resample เสียงจาก inRate -> 16000 (linear) ให้ตรงกับที่ openWakeWord ต้องการ
 // เบราว์เซอร์มักให้ 48000; ถ้าป้อน 48k เข้า pipeline ที่คิดว่า 16k -> feature เพี้ยนหมด
@@ -49,7 +52,7 @@ async function loadSessions() {
 
 // สร้างตัวฟังคำปลุก — คืน { start, stop }
 // callbacks: onWake(score), onHeard(text) โชว์ score ไว้จูน, onReady(), onError(e)
-export function createWakeListener({ onWake, onHeard, onReady, onError, threshold = DEFAULT_THRESHOLD, triggerFrames = 1 }) {
+export function createWakeListener({ onWake, onHeard, onReady, onError, threshold = DEFAULT_THRESHOLD, triggerFrames = DEFAULT_TRIGGER_FRAMES }) {
   let stream = null, ctx = null, node = null, source = null
   let stopped = false, draining = false, sessions = null
   const pending = []                 // คิวเสียง 16k (float)

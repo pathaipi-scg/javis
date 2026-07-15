@@ -621,6 +621,12 @@ if os.path.isdir(os.path.join(FRONTEND_DIST, "assets")):
     if os.path.isdir(_fonts_dir):
         app.mount("/fonts", StaticFiles(directory=_fonts_dir), name="spa-fonts")
 
+    # โมเดล openWakeWord (public/models -> dist/models) — คำปลุก "hey jarvis" โหลดไฟล์นี้จาก /models/oww/*.onnx
+    # ไม่ mount ตรงนี้ -> 404 บน :5000 (บน Vite :5173 public/ เสิร์ฟที่รากอยู่แล้วเลยไม่เจอปัญหา)
+    _models_dir = os.path.join(FRONTEND_DIST, "models")
+    if os.path.isdir(_models_dir):
+        app.mount("/models", StaticFiles(directory=_models_dir), name="spa-models")
+
     @app.get("/", response_class=HTMLResponse)
     async def spa_root():
         """หน้าแรก = React app (routing ภายในเป็น hash #/ask #/case #/stt ...)"""

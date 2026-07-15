@@ -534,16 +534,40 @@ def _search_floor(query):
 # คำถามเชิงวิเคราะห์ (นับ/สรุป/ภาพรวม) — คำตอบอยู่ที่การมองเคส "ทั้งกอง" ไม่ใช่จับคู่รายเคส
 # reranker ใช้กับพันธุ์นี้ไม่ได้ (ถามรายเคสว่า "ตอบคำถามนี้ได้ไหม" ทุกเคสจะตอบว่าไม่ได้ -> ตัดหมด)
 _AGG_RE = re.compile(r"กี่(เคส|ครั้ง|เรื่อง|อัน|เครื่อง)|ทั้งหมด|อะไรบ้าง|มีเคส|สรุป|"
-                     r"บ่อย(ที่)?สุด|เท่าไหร่|เท่าไร|จำนวน|แนวโน้ม|เปรียบเทียบ|เรียงตาม|"
-                     r"เล่ามา|ลิสต์|รายการ|ทั้งหมดกี่|มีบ้าง")
+                     r"(บ่อย|มาก|น้อย|นาน|สูง|ต่ำ|เยอะ)(ที่)?สุด|"
+                     r"เท่าไหร่|เท่าไร|จำนวน|แนวโน้ม|เปรียบเทียบ|เรียงตาม|"
+                     r"เล่ามา|ลิสต์|รายการ|ทั้งหมดกี่|มีบ้าง|"
+                     r"\bhow many\b|\bhow much\b|\bmost\b|\bleast\b|\blongest\b|"
+                     r"\bhighest\b|\blowest\b|\btotal\b|\baverage\b", re.I)
+
+# สัญญาณ "อาจเป็นคำถามวิเคราะห์" (หลวมกว่า _AGG_RE) — ด่านคัดก่อนเรียก LLM ตัดสินเลน
+# ไม่มีสัญญาณพวกนี้เลย = คำถามวิธีแก้ตรงๆ -> ข้าม classify ไม่เปลืองเวลา/เงินเรียก LLM
+_MAYBE_AGG_RE = re.compile(
+    r"สุด|มากกว่า|น้อยกว่า|เคสไหน|อันไหน|ตัวไหน|เครื่องไหน|กี่|จำนวน|เฉลี่ย|รวม|อันดับ|"
+    r"downtime|severity|เสียเวลา|ซ่อมนาน|หยุดนาน|"
+    r"\bwhich\b|\bhow many\b|\bhow much\b|\bmost\b|\bleast\b|\blongest\b|\bhighest\b|"
+    r"\blowest\b|\btotal\b|\baverage\b|\brank\b|\btop\b|\blist\b|\ball cases\b|\bcompare\b",
+    re.I)
 
 
 def _case_ctx(cases):
-    """แปลงรายการเคสเป็น context บรรทัดละเคส (ฟอร์แมตเดียวกันทุกเลน)"""
+    """แปลงรายการเคสเป็น context บรรทัดละเคส (เลนปกติ — เน้นวิธีแก้ ไม่มีตัวเลขสถิติ)"""
     return "\n".join(
         f"[{c['case_id']}] โรงงาน: {c.get('plant') or '-'} ฝ่าย: {c.get('department') or '-'} "
         f"เครื่อง {c['machine']} อาการ: {c['symptom']} "
         f"จุด: {c['component']} วิธีแก้: {c['solution']}"
+        for c in cases
+    )
+
+
+def _analytic_ctx(cases):
+    """context เลนวิเคราะห์ — ใส่ severity/downtime/วันที่ ให้ LLM นับ/จัดอันดับได้จริง
+    (เลนปกติไม่แตะ context นี้ -> คำถามวิธีแก้เดิมไม่กระทบ + ตาข่าย groundedness ไม่เพี้ยน)"""
+    return "\n".join(
+        f"[{c['case_id']}] โรงงาน:{c.get('plant') or '-'} ฝ่าย:{c.get('department') or '-'} "
+        f"เครื่อง:{c['machine']} severity:{c.get('severity') or '-'} "
+        f"downtime:{c.get('downtime_min', 0)}นาที วันที่:{c.get('repair_date') or '-'} "
+        f"อาการ:{c['symptom']}"
         for c in cases
     )
 
@@ -570,6 +594,24 @@ def _llm_chat(messages, use_model, stop=None, n8n_context=None, n8n_question=Non
     return resp.choices[0].message.content.strip()
 
 
+def _classify_lane(query, use_model):
+    """เมื่อ regex ไม่ชัด -> ให้ LLM ตัดสินว่าเข้าเลนไหน. คืน 'analytic' | 'case'
+    graceful degradation: LLM ล่ม/ตอบแปลก -> 'case' (เลนปกติ ปลอดภัยสุด ไม่พังทั้งระบบ)"""
+    try:
+        out = _llm_chat(
+            [{"role": "system", "content":
+              "คุณคือ router จำแนกคำถามช่างซ่อมบำรุง ตอบคำเดียวเท่านั้น: analytic หรือ case\n"
+              "analytic = ถามภาพรวม/นับ/จัดอันดับ/เปรียบเทียบหลายเคส "
+              "(เช่น เคสไหน downtime มากสุด, มีกี่เคส, severity สูงมีอะไรบ้าง, show most downtime)\n"
+              "case = ถามวิธีแก้/อาการ/สาเหตุ ของปัญหาเรื่องเดียว "
+              "(เช่น ปั๊มสั่นแก้ยังไง, มอเตอร์ไหม้เพราะอะไร, how to fix bearing)"},
+             {"role": "user", "content": query}],
+            use_model)
+        return "analytic" if "analytic" in (out or "").lower() else "case"
+    except Exception:
+        return "case"
+
+
 def _analytic_answer(query, plant, use_model, used):
     """เลนคำถามวิเคราะห์ (นับ/สรุป/ภาพรวม): กรองเคสตามฝ่าย/โรงงานที่ถูกเอ่ยในคำถาม
     แล้วส่งทั้งชุดให้ LLM มองรวม — ข้าม reranker/ตาข่าย groundedness ที่ออกแบบมาสำหรับจับคู่รายเคส"""
@@ -592,20 +634,30 @@ def _analytic_answer(query, plant, use_model, used):
     if plants:
         cases = [c for c in cases if (c.get("plant") or "").casefold() in plants]
     where = f"โรงงาน {plant}" if plant else "ระบบ"
+    en = _is_english(query)   # ถามอังกฤษ -> ตอบอังกฤษ (เลนวิเคราะห์รองรับ 2 ภาษาเหมือนเลนปกติ)
     if not cases:
-        return {"text": f"ไม่พบเคสที่เกี่ยวข้องใน{where}", "citations": [], "model": used}
+        return {"text": ("No relevant case found." if en else f"ไม่พบเคสที่เกี่ยวข้องใน{where}"),
+                "citations": [], "model": used}
     total = len(cases)                       # จำนวนจริงก่อนตัด — ใช้ตอบคำถามเชิงนับ
     cases = cases[:25]                       # กัน context บวมเมื่อ vault โตขึ้น
+    lang_line = ("Respond ENTIRELY in English. The case data is Thai — translate values into English. "
+                 if en else "ตอบเป็นภาษาไทย ")
     system_msg = (
-        "คุณคือผู้ช่วยช่างซ่อมบำรุง ตอบเป็นภาษาไทยสั้นกระชับ "
-        "ใช้เฉพาะข้อมูลจากรายการเคสที่ให้มา นับ/สรุปตามที่มีจริงเท่านั้น "
-        "ห้ามลอกข้อความเคสดิบทั้งบรรทัด ห้ามเดาหรือเพิ่มความรู้ทั่วไป"
+        lang_line +
+        "คุณคือผู้ช่วยช่างซ่อมบำรุง วิเคราะห์จากรายการเคสที่ให้มาเท่านั้น (นับ/สรุป/จัดอันดับตามจริง) "
+        "downtime = นาทีที่เครื่องหยุด (ค่ามาก = นานสุด) severity = ระดับความรุนแรง high/medium/low. "
+        "ตอบสั้นเป็นประโยคสรุปของคุณเอง ห้ามเดา/เพิ่มความรู้ทั่วไป "
+        "ห้ามลอกบรรทัดข้อมูลดิบ ห้ามพิมพ์ field ดิบเช่น 'ฝ่าย:' 'อาการ:' 'downtime:' "
+        "หรือรหัสเคสในวงเล็บเหลี่ยม '[MTN-...]' — อ้างชื่อเคสแบบ MTN-xxxx ได้ (ไม่มีวงเล็บเหลี่ยม) "
+        "เช่น: เครื่อง Motor M-101 (เคส MTN-2026-0005) หยุดนานสุด 120 นาที"
     )
     # ถ้ารายการถูกตัด (เกิน 25) ต้องบอกจำนวนจริงในหัวรายการ — ไม่งั้นโมเดลนับได้แค่ที่เห็น
     head = f"รายการเคส (ทั้งหมด {total} เคส แสดง {len(cases)} เคสแรก):" if total > len(cases) \
            else "รายการเคส:"
-    ctx_block = f"{head}\n{_case_ctx(cases)}"
+    ctx_block = f"{head}\n{_analytic_ctx(cases)}"   # <- context มี downtime/severity (ต่างจากเลนปกติ)
     user_msg = f"{ctx_block}\n\nคำถาม: {query}"
+    user_msg += ("\n\nIMPORTANT: Write your ENTIRE answer in English only."
+                 if en else "\n\nสำคัญ: ตอบเป็นภาษาไทยทั้งหมด")
     text = _llm_chat([{"role": "system", "content": system_msg},
                       {"role": "user", "content": user_msg}],
                      use_model, stop=["รายการเคส:", "รายการเคส (", "คำถาม:"],
@@ -614,7 +666,20 @@ def _analytic_answer(query, plant, use_model, used):
     # -> แทนด้วยสรุปนับ + รายการเครื่องที่ปลอดภัย (ไม่มีรหัสเคส/ข้อมูลหลังบ้าน)
     if len(text) < 4 or _looks_like_dump(text):
         machines = list(dict.fromkeys(c.get("machine", "").strip() for c in cases if c.get("machine")))
-        text = f"พบ {total} เคสใน{where}: " + ", ".join(machines[:10])
+        text = ((f"Found {total} cases: " if en else f"พบ {total} เคสใน{where}: ")
+                + ", ".join(machines[:10]))
+    # บังคับภาษาให้ตรง (GPT บางทีดื้อ ถามอังกฤษตอบไทย) -> คำตอบผิดภาษา แปลซ้ำ 1 ครั้ง
+    has_thai = bool(re.search(r"[฀-๿]", text))
+    if text and ((en and has_thai) or (not en and not has_thai)):
+        try:
+            tr = _llm_chat([{"role": "system", "content":
+                             f"Translate to {'English' if en else 'Thai'}. Output ONLY the translation, "
+                             "same meaning, concise. Keep case codes/numbers as-is."},
+                            {"role": "user", "content": text}], use_model)
+            if tr and len(tr.strip()) > 3:
+                text = tr.strip()
+        except Exception:
+            pass
     return {"text": text, "citations": [c["case_id"] for c in cases[:10]], "model": used}
 
 
@@ -628,8 +693,11 @@ def answer(query, k=4, plant=None, model=None):
     used = use_model if (_is_azure_model(use_model) or _is_n8n_model(use_model)) \
         else (use_model or QWEN_MODEL)
     try:
-        # เลนวิเคราะห์: คำถามนับ/สรุป/ภาพรวม — ต้องเห็นเคสทั้งกอง reranker รายเคสจะตัดหมด
-        if _AGG_RE.search(query):
+        # เลนวิเคราะห์: คำถามนับ/สรุป/ภาพรวม/จัดอันดับ — ต้องเห็นเคสทั้งกอง reranker รายเคสจะตัดหมด
+        # hybrid routing: regex คำชัด -> เข้าเลย (เร็ว/ฟรี) ; regex ไม่ชัดแต่มีสัญญาณ -> LLM ตัดสิน
+        # (ไม่มีสัญญาณเลย = ถามวิธีแก้ตรงๆ -> ข้าม classify ไม่เสียเวลาเรียก LLM)
+        if _AGG_RE.search(query) or \
+           (_MAYBE_AGG_RE.search(query) and _classify_lane(query, use_model) == "analytic"):
             return _analytic_answer(query, plant, use_model, used)
         # ดึงกว้างกว่า k (คัดหยาบ) — reranker จะเป็นคนคัดละเอียดทีหลัง
         hits = search(query, k=max(k * 2, 10), plant=plant)
