@@ -42,6 +42,14 @@ TTS_WIN_VOICE = os.getenv("TTS_WIN_VOICE", "")
 _PS1 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tts_windows.ps1")
 
 
+def _speed_for(text):
+    """เลือกจังหวะพูดตามภาษา: อังกฤษล้วน (ไม่มีอักษรไทย) -> ช้ากว่า (TTS_SPEED_EN)
+    ไทย/ปนไทย -> TTS_SPEED เดิม. อังกฤษที่ speed 1.3 ฟังเร็วเกิน จึงแยก"""
+    import re, openai_audio as oa
+    is_en = (not re.search("[฀-๿]", text or "")) and bool(re.search(r"[A-Za-z]", text or ""))
+    return oa.TTS_SPEED_EN if is_en else oa.TTS_SPEED
+
+
 async def synthesize(text):
     """แปลงข้อความ -> (audio_bytes, media_type). คืน None ถ้าทำไม่ได้ (ให้ฝั่งเว็บ fallback)"""
     text = (text or "").strip()
@@ -60,7 +68,7 @@ def stream_openai(text):
     import openai_audio as oa
     client = oa.get_client()
     kw = dict(model=oa.TTS_MODEL, voice=oa.TTS_VOICE, input=text,
-              response_format="mp3", speed=oa.TTS_SPEED)
+              response_format="mp3", speed=_speed_for(text))
     def _open():
         try:
             return client.audio.speech.with_streaming_response.create(instructions=oa.TTS_INSTRUCTIONS, **kw) \
@@ -80,7 +88,7 @@ def _synthesize_openai(text):
         import openai_audio as oa
         client = oa.get_client()
         kw = dict(model=oa.TTS_MODEL, voice=oa.TTS_VOICE, input=text,
-                  response_format=oa.TTS_FORMAT, speed=oa.TTS_SPEED)
+                  response_format=oa.TTS_FORMAT, speed=_speed_for(text))
         try:
             r = client.audio.speech.create(instructions=oa.TTS_INSTRUCTIONS, **kw) if oa.TTS_INSTRUCTIONS \
                 else client.audio.speech.create(**kw)

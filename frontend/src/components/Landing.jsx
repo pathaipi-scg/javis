@@ -147,7 +147,7 @@ export default function Landing({ model = '' }) {
     const ids = answer?.citations || []
     if (!ids.length) { setRefCases([]); return }
     let alive = true
-    Promise.all(ids.slice(0, 1).map(id =>
+    Promise.all(ids.slice(0, 20).map(id =>
       fetch('/api/case/' + encodeURIComponent(id)).then(r => (r.ok ? r.json() : null)).catch(() => null)
     )).then(rs => {
       if (!alive) return
@@ -513,7 +513,7 @@ export default function Landing({ model = '' }) {
           </div>
           {answer.answer}
           {answer.citations?.length > 0 && (
-            <div className="cites">📎 อ้างอิงจากเคส: {answer.citations[0]}</div>
+            <div className="cites">📎 อ้างอิงจากเคส: {answer.citations.join(', ')}</div>
           )}
         </div>
       )}

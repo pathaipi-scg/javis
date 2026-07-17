@@ -27,6 +27,7 @@ STT_MODEL = os.getenv("OPENAI_STT_DEPLOYMENT", os.getenv("OPENAI_STT_MODEL", "gp
 # จูนเสียง
 TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "").strip() or "verse"         # default verse; onyx/ash/echo ทุ้มกว่า
 TTS_SPEED = float(os.getenv("OPENAI_TTS_SPEED", "1.3"))                  # จังหวะพูด 0.25-4.0 (>1 = เร็วขึ้น)
+TTS_SPEED_EN = float(os.getenv("OPENAI_TTS_SPEED_EN", "1.0"))            # คำตอบอังกฤษพูดช้ากว่า (1.3 เร็วไปสำหรับอังกฤษ)
 # instruction เน้นความชัด+กระชับ (เลี่ยงคำที่ทำให้พูดช้า เช่น "นิ่ง/สุขุม/มั่นใจ")
 TTS_INSTRUCTIONS = os.getenv("OPENAI_TTS_INSTRUCTIONS",
                              "ออกเสียงชัดถ้อยชัดคำ กระชับ ฉับไว").strip()
