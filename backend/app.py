@@ -283,7 +283,7 @@ async def api_me(authorization: str = Header("")):
 # api:   ค่า value = "azure:<deployment>" — rag.py จะ route ไป Azure client
 def _model_options():
     from llm import QWEN_MODEL
-    from rag import AZURE_READY, AZURE_DEPLOYMENT
+    from rag import AZURE_READY, AZURE_DEPLOYMENT, default_model
     api_models = []
     # ยิง Azure OpenAI ตรงจากแอป (เลน n8n proxy ยังมีในโค้ด rag.py แต่ไม่โชว์ใน dropdown)
     if AZURE_READY:
@@ -296,7 +296,9 @@ def _model_options():
             {"id": QWEN_MODEL, "label": "Typhoon 8B (ไทย)"},
         ],
         "api": api_models,
-        "default": QWEN_MODEL,
+        # ถามจาก rag.default_model() เสมอ — ต้องเป็นตัวเดียวกับที่ /api/ask ใช้จริง
+        # ตอนไม่ได้ส่ง model มา (ไม่งั้น dropdown โชว์อย่าง เซิร์ฟเวอร์ใช้อีกอย่าง)
+        "default": default_model(),
     }
 
 

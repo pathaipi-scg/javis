@@ -59,6 +59,35 @@ def _is_english(q):
     return (not re.search("[฀-๿]", q)) and bool(re.search(r"[A-Za-z]", q))
 
 
+# คำเชื่อมอังกฤษล้วน (function word) — ตัวชี้ว่าเป็น "ประโยคอังกฤษ" จริง
+# ห้ามใส่ศัพท์โดเมน (downtime/severity/case) เพราะคำตอบไทยยืมมาใช้ปกติ
+_EN_PROSE_RE = re.compile(r"\b(the|is|are|was|were|be|been|has|have|had|with|without|"
+                          r"from|there|this|these|those|which|and|or|of|to|in|for|by|it|as)\b", re.I)
+
+
+def _is_thai_answer(text):
+    """คำตอบเป็นภาษาไทยไหม — ใช้คู่กับ _is_english(query) เช็คว่าตอบผิดภาษาไหม
+
+    ห้ามเช็คแค่ "มีอักษรไทยไหม" (โค้ดเดิมทำแบบนั้น): ชื่อเครื่องใน vault เป็นไทย
+    (รถตัด, ปั๊มน้ำ, หุ่นยนต์จับแผ่นกระเบื้อง) พอโผล่ในคำตอบแค่คำเดียวก็นับเป็น
+    "คำตอบไทย" ทันที ทั้งที่เนื้อเป็นอังกฤษล้วน -> ตาข่ายบังคับภาษาไม่ทำงาน
+    ผลอีกด้าน: คำตอบอังกฤษที่ลิสต์เครื่องชื่อไทยหลายตัว (เช่นเลนวิเคราะห์ 13 เคส)
+    เคยถูกตัดสินว่าเป็นไทยแล้วโดนแปลซ้ำ -> เสี่ยงรายการเคสหล่นระหว่างแปล
+
+    ตัดสินจาก 2 ทาง (ทางใดทางหนึ่งผ่าน = ไทย):
+      1. สัดส่วนอักษรไทย >= ครึ่ง                 -> ไทยชัดเจน
+      2. ไม่มีคำเชื่อมอังกฤษ (the/is/with/...)   -> ไทยที่มีศัพท์อังกฤษปนเยอะ
+         เช่น "พบ 13 เคส: Motor M-101 (เคส MTN-2026-0005) 120 นาที" ไทยแค่ 43%
+         แต่ไม่มีคำเชื่อม = ไทย -> กันแปลซ้ำโดยไม่จำเป็น (แปลซ้ำเสี่ยงรายการเคสหล่น)
+    """
+    text = text or ""
+    th = len(re.findall(r"[฀-๿]", text))
+    if not th:
+        return False                       # ไม่มีอักษรไทยเลย = ไม่ใช่ไทยแน่นอน
+    la = len(re.findall(r"[A-Za-z]", text))
+    return (th / (th + la) >= 0.5) or (len(_EN_PROSE_RE.findall(text)) <= 1)
+
+
 # ตาข่ายกันมโน: คำตอบต้องมีเนื้อมาจากเคสจริง ไม่ใช่ความรู้ทั่วไปที่โมเดลจำมาตอนเทรน
 # วัดด้วย char-trigram overlap: คำตอบที่ย่อยจากเคสวัดได้ ~0.54, คำตอบมโนวัดได้ ~0.06 -> 0.25 กลางช่อง
 GROUND_MIN = float(os.getenv("RAG_GROUND_MIN", "0.25"))
@@ -128,6 +157,23 @@ AZURE_API_KEY    = os.getenv("AZURE_OPENAI_API_KEY", "").strip()
 AZURE_API_VER    = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
 AZURE_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "").strip()
 AZURE_READY      = bool(AZURE_ENDPOINT and AZURE_API_KEY and AZURE_DEPLOYMENT)
+
+
+def default_model():
+    """โมเดลที่ใช้เมื่อผู้ใช้ไม่ได้เลือก — Azure ถ้าตั้ง .env ครบ, ไม่งั้นตกมา local
+
+    ทำไม Azure: วัดกับคำถามชุด Desktop/test-questions.txt แล้ว Azure เร็วกว่า
+    (~1.5-2.0 วิ เทียบ Typhoon ~2.9-3.6 วิ) และเอ่ย case_id ในคำตอบ -> citation
+    เกาะเคสที่ใช้จริงได้แม่นกว่า ส่วนคำตอบ Typhoon มักโดนตาข่ายกันดิบ/กันมโนตีตก
+    แล้วตกไปใช้ข้อความ fallback สำเร็จรูป ("พบ N เคสในระบบ: ...") ที่ไม่มี case_id
+    -> คนที่ไม่แตะ dropdown ไม่ควรเจอเลนที่ด้อยกว่า
+
+    *** ที่เดียวที่ตัดสิน default *** — ทั้ง rag.answer() และ app._model_options()
+    ต้องเรียกตัวนี้ ห้ามเขียน fallback ซ้ำที่อื่น (เคยแตกกันมาแล้ว: dropdown โชว์ Azure
+    แต่ /api/ask ที่ไม่ส่ง model กลับวิ่งเข้า Typhoon)
+    """
+    from llm import QWEN_MODEL
+    return f"azure:{AZURE_DEPLOYMENT}" if AZURE_READY else QWEN_MODEL
 
 # ---- n8n proxy lane — ยิงผ่าน webhook n8n (ในวงบริษัท) แทนเรียก Azure ตรงจากแอป ----
 # n8n ถือ API key เอง (ไม่โผล่ในแอป) + คุมกลาง/log/rate-limit ได้ที่เดียว
@@ -834,8 +880,8 @@ def _analytic_answer(query, plant, use_model, used):
         text = ((f"Found {total} cases: " if en else f"พบ {total} เคสใน{where}: ")
                 + ", ".join(machines[:10]))
     # บังคับภาษาให้ตรง (GPT บางทีดื้อ ถามอังกฤษตอบไทย) -> คำตอบผิดภาษา แปลซ้ำ 1 ครั้ง
-    has_thai = bool(re.search(r"[฀-๿]", text))
-    if text and ((en and has_thai) or (not en and not has_thai)):
+    # ผิดภาษา = ภาษาคำถามกับภาษาคำตอบ "ตรงกัน" ในเชิงบูลีน (en=True คู่กับ ตอบไทย=True)
+    if text and (en == _is_thai_answer(text)):
         try:
             tr = _llm_chat([{"role": "system", "content":
                              f"Translate to {'English' if en else 'Thai'}. Output ONLY the translation, "
@@ -859,12 +905,10 @@ def _analytic_answer(query, plant, use_model, used):
 def answer(query, k=4, plant=None, model=None):
     """RAG: ดึงเคสที่เกี่ยว -> LLM สรุป. คืน {text, citations} หรือ None
     plant: จำกัดขอบเขตให้ตอบจากเคสในโรงงานนั้นเท่านั้น
-    model: ชื่อโมเดลที่ผู้ใช้เลือกหน้าเว็บ (ว่าง/None = ใช้ QWEN_MODEL ตาม .env)"""
-    from llm import QWEN_MODEL
+    model: ชื่อโมเดลที่ผู้ใช้เลือกหน้าเว็บ (ว่าง/None = ใช้ default_model())"""
     # โมเดลที่ผู้ใช้เลือก (azure:* = คลาวด์, อื่น/ว่าง = local ตาม .env) — ใช้ echo กลับทุกเส้นทาง
-    use_model = (model or "").strip()
-    used = use_model if (_is_azure_model(use_model) or _is_n8n_model(use_model)) \
-        else (use_model or QWEN_MODEL)
+    use_model = (model or "").strip() or default_model()
+    used = use_model
     try:
         # เลนวิเคราะห์: คำถามนับ/สรุป/ภาพรวม/จัดอันดับ — ต้องเห็นเคสทั้งกอง reranker รายเคสจะตัดหมด
         # hybrid routing: regex คำชัด -> เข้าเลย (เร็ว/ฟรี) ; regex ไม่ชัดแต่มีสัญญาณ -> LLM ตัดสิน
@@ -935,8 +979,7 @@ def answer(query, k=4, plant=None, model=None):
             text = (("Suggested fix from similar cases: " if en else "แนวทางแก้จากเคสใกล้เคียง: ") + " • ".join(sols[:3])) if sols else ("No matching case." if en else "ไม่พบเคสที่ตรง")
         # บังคับภาษาให้ตรง: GPT บางทีดื้อ (ถามไทยมีอังกฤษปน -> ตอบอังกฤษ) ไม่ฟัง prompt
         # -> เช็คภาษาคำตอบจริง ถ้าไม่ตรง แปลซ้ำ 1 ครั้ง (deterministic ไม่พึ่งโมเดลเชื่อฟัง)
-        has_thai = bool(re.search(r"[฀-๿]", text))
-        if text and ((en and has_thai) or (not en and not has_thai)):
+        if text and (en == _is_thai_answer(text)):
             tgt = "English" if en else "Thai"
             try:
                 tr = _llm_chat(
