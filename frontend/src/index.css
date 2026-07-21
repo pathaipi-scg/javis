@@ -694,7 +694,25 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .km-thumb { width: 76px; height: 54px; border-radius: 7px; overflow: hidden; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); }
 .km-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .km-thumb-ph { display: block; width: 100%; height: 100%; }
+.km-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.km-count { margin-top: 12px; color: #9aa4c4; font-size: 13px; }
 .km-prog { color: #b9a9f5; font-size: 13.5px; margin-top: 14px; }
+.km-prog-lbl { margin-bottom: 7px; }
+/* แถบโหลด: ราง + เนื้อไล่สี วิ่งตาม % */
+.km-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.09); overflow: hidden; }
+/* เนื้อแถบ = สีพื้นไล่ + ลายทแยงวิ่งทับ (barber pole) -> ระหว่างรอ page ถัดไปยังดูเคลื่อน ไม่เหมือนค้าง */
+.km-bar-fill {
+  height: 100%; border-radius: 99px; min-width: 8px; transition: width .3s ease;
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 10px, rgba(255,255,255,0) 10px 20px),
+    linear-gradient(90deg,#4b7bff,#8b5cf6);
+  background-size: 28px 28px, 100% 100%;
+  animation: km-stripe .7s linear infinite;
+}
+@keyframes km-stripe { to { background-position: 28px 0, 0 0; } }
+/* indeterminate: ไม่รู้ % (server กำลังแปลง) -> ทั้งแถบวิ่งไปมา */
+.km-bar.indet .km-bar-fill { width: 40% !important; animation: km-stripe .7s linear infinite, km-indet 1.1s ease-in-out infinite; }
+@keyframes km-indet { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
 .km-summary .case-actions { margin-top: 6px; }
 @media (max-width: 760px) { .km-cols { grid-template-columns: 1fr; } .km-tree { position: static; max-height: 300px; } }
 
@@ -714,6 +732,9 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
 .km-mt-file { min-width: 0; font-weight: 600; color: #eef1fb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .km-mt-path { min-width: 0; color: #9aa4c4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .km-mt-n { text-align: right; color: #b9a9f5; font-variant-numeric: tabular-nums; }
+/* row เป็น <label> ใน .case-wrap -> โดน `.case-wrap label {display:block}` (247) ทับ grid หาย
+   คอลัมน์เลยยุบชนกัน — เพิ่ม specificity ดึง grid กลับ */
+.km-modal .km-mt-row { display: grid; }
 .km-mt-st { text-align: right; }
 .km-modal-foot { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 26px; border-top: 1px solid rgba(255,255,255,.08); }
 .km-modal .km-prog { padding: 0 26px; }

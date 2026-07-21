@@ -92,21 +92,30 @@ async def _warm_whisper():
 
 @app.on_event("startup")
 async def _warm_llm():
-    """โหลด LLM (Typhoon/Qwen) + bge-m3 เข้า GPU ตั้งแต่เปิด — คำถามแรกไม่เจอ cold โหลดโมเดล
-    ยิง ollama เปล่าๆ ครั้งเดียว (thread แยก ไม่บล็อก start); ต่อไม่ติดก็ปล่อย lazy-load ตอนถามแรก"""
+    """อุ่นโมเดลตั้งแต่เปิด — คำถามแรกไม่เจอ cold (reranker + embed + index โหลดครั้งแรกช้า ~นาที)
+    แยก try แต่ละ step: ถ้าใช้ Azure (ไม่รัน Typhoon local) การ ping local LLM จะล้ม
+    แต่ต้อง 'ไม่บล็อก' การอุ่น bge/reranker/index ที่เป็นตัวทำคำถามแรกช้าจริง (ทำใน thread แยก)"""
     import threading
-    def _load():
+
+    def _step(name, fn):
         try:
-            from llm import QWEN_MODEL
-            client = rag._get_client()
-            client.chat.completions.create(          # อุ่น LLM: gen 1 token พอให้โหลดน้ำหนักเข้า GPU
-                model=QWEN_MODEL, max_tokens=1,
-                messages=[{"role": "user", "content": "hi /no_think"}])
-            rag._embed(["warm"])                     # อุ่น bge-m3 (embedding)
-            rag._get_reranker()                      # อุ่น reranker (CPU) — โหลดครั้งแรกช้า
-            print(f"[warm] LLM ({QWEN_MODEL}) + bge + reranker พร้อมใช้")
+            fn()
+            print(f"[warm] {name} พร้อมใช้")
         except Exception as e:
-            print(f"[warm] โหลด LLM/bge ล่วงหน้าไม่ได้ ({type(e).__name__}) — จะโหลดตอนถามแรกแทน")
+            print(f"[warm] อุ่น {name} ไม่ได้ ({type(e).__name__}) — จะโหลดตอนถามแรกแทน")
+
+    def _warm_local_llm():
+        from llm import QWEN_MODEL
+        rag._get_client().chat.completions.create(   # อุ่น LLM local: gen 1 token พอให้โหลดน้ำหนัก
+            model=QWEN_MODEL, max_tokens=1,
+            messages=[{"role": "user", "content": "hi /no_think"}])
+
+    def _load():
+        # เรียงจากตัวที่ทำคำถามแรกช้าสุดก่อน (reranker/index) — local LLM เป็นออปชัน อยู่ท้าย
+        _step("reranker (CPU)", rag._get_reranker)   # โหลดครั้งแรกช้าสุด — ต้นเหตุคำถามแรก 58 วิ
+        _step("bge-m3 embedding", lambda: rag._embed(["warm"]))
+        _step("vault index", lambda: rag.search("warm"))  # embed เคสทั้งกอง + สร้าง index (cache)
+        _step("local LLM", _warm_local_llm)          # ล้มได้ถ้าใช้ Azure — ไม่กระทบ step บน
     threading.Thread(target=_load, daemon=True).start()
 
 

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { getToken } from '../auth'
 
 // หน้า KM — อัปโหลดเอกสาร (Word/PDF/PPT/Excel) เข้า vault, แปลงทุกหน้าเป็น PNG,
 // แล้วกด Train ให้ AI วิเคราะห์ทีละหน้า + สร้างบทสรุป (เข้า index เดียวกับเคส -> ถามที่หน้าแรกเจอ)
@@ -33,6 +34,7 @@ export default function KmPage() {
   const [picked, setPicked] = useState({})       // km_id -> bool (เลือก train)
   const [progress, setProgress] = useState(null)  // {km_id, i, n} ระหว่าง train
   const [showTrain, setShowTrain] = useState(false)  // เปิด modal เลือกไฟล์ train
+  const [upPct, setUpPct] = useState(null)  // % อัปโหลด (0-100) | -1 = แปลงฝั่ง server (indeterminate)
 
   function openTrain() {
     // เปิด modal + default ติ๊กเฉพาะที่ยังไม่เทรน
@@ -60,13 +62,33 @@ export default function KmPage() {
     e.preventDefault()
     if (busy || !files.length) return
     if (!target) { setMsg('เลือกโฟลเดอร์ปลายทางก่อน'); return }
-    setBusy(true); setMsg('')
+    setBusy(true); setMsg(''); setUpPct(0)
     try {
       const fd = new FormData()
       files.forEach(f => fd.append('file', f))
       fd.append('targetPath', target)
-      const res = await fetch('/api/km/upload', { method: 'POST', body: fd })
-      const d = await res.json()
+      // ใช้ XHR แทน fetch — fetch อ่าน % อัปโหลดไม่ได้ (ไม่มี upload.onprogress)
+      const d = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', '/api/km/upload')
+        // XHR ไม่ผ่าน window.fetch ที่ถูกดักใน auth.js -> ต้องแนบ token เอง ไม่งั้น 401
+        const tok = getToken()
+        if (tok) xhr.setRequestHeader('Authorization', 'Bearer ' + tok)
+        // ไบต์ขึ้นไปเรื่อย ๆ = แถบเต็ม; ครบ 100% = server เริ่มแปลงเป็นรูป -> สลับเป็น indeterminate
+        xhr.upload.onprogress = (ev) => {
+          if (!ev.lengthComputable) return
+          const p = Math.round(ev.loaded / ev.total * 100)
+          setUpPct(p >= 100 ? -1 : p)
+        }
+        xhr.upload.onload = () => setUpPct(-1)   // ส่งครบแล้ว รอ server แปลง
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText)) } catch (err) { reject(err) }
+          } else reject(new Error('HTTP ' + xhr.status))
+        }
+        xhr.onerror = () => reject(new Error('network'))
+        xhr.send(fd)
+      })
       const ok = (d.results || []).filter(r => r.ok).length
       const bad = (d.results || []).filter(r => !r.ok)
       setMsg(`อัปโหลด/แปลงเสร็จ ${ok} ไฟล์` + (bad.length ? ` — ล้มเหลว ${bad.length} (ตรวจว่าลง LibreOffice แล้วสำหรับไฟล์ Office)` : ''))
@@ -74,7 +96,7 @@ export default function KmPage() {
       loadDocs()
     } catch {
       setMsg('อัปโหลดไม่สำเร็จ — ตรวจ backend + VAULT_PATH')
-    } finally { setBusy(false) }
+    } finally { setBusy(false); setUpPct(null) }
   }
 
   async function doTrain() {
@@ -143,30 +165,30 @@ export default function KmPage() {
                    onChange={e => setFiles([...e.target.files])} />
             {files.length > 0 && <div className="km-files">{files.map(f => f.name).join(', ')}</div>}
             <div className="km-hint">อัปโหลดเข้าโฟลเดอร์ที่ชื่อมีคำว่า “Morning” → ตอน Train จะแตกเป็นเคส MTN เข้า cases/ ให้อัตโนมัติ</div>
-            <div className="case-actions">
+            <div className="case-actions km-actions">
               <button className="btn-save" type="submit" disabled={busy || !files.length}>
                 {busy ? '⏳ กำลังอัปโหลด/แปลง…' : '⬆ อัปโหลด + แปลงเป็นรูป'}
               </button>
+              <button type="button" className="btn-save" onClick={openTrain} disabled={busy || trainable.length === 0}>
+                🚀 Train เอกสาร{trainable.length > 0 ? ` (${trainable.length})` : ''}
+              </button>
             </div>
+            <div className="km-count">
+              ในคลัง {docs.length} ไฟล์ · เทรนแล้ว {docs.filter(d => d.training_status === 'Trained').length} · รอเทรน {trainable.length}
+            </div>
+            {upPct !== null && (
+              <div className="km-prog">
+                <div className="km-prog-lbl">
+                  {upPct < 0 ? 'กำลังแปลงเป็นรูปที่ server…' : `กำลังอัปโหลด ${upPct}%`}
+                </div>
+                <div className={'km-bar' + (upPct < 0 ? ' indet' : '')}>
+                  <div className="km-bar-fill" style={{ width: upPct < 0 ? '100%' : upPct + '%' }} />
+                </div>
+              </div>
+            )}
           </form>
         </div>
         {msg && <pre className="km-msg">{msg}</pre>}
-      </div>
-
-      {/* ── สรุปคลัง + ปุ่มเปิด modal Train ── */}
-      <div className="case-card km-summary">
-        <div className="case-head">
-          <h2>🧠 เอกสารในคลัง</h2>
-          <span className="case-sub">
-            ทั้งหมด {docs.length} ไฟล์ · เทรนแล้ว {docs.filter(d => d.training_status === 'Trained').length} · รอเทรน {trainable.filter(d => d.training_status !== 'Trained').length}
-          </span>
-        </div>
-        <div className="case-actions">
-          <button type="button" className="btn-save" onClick={openTrain} disabled={busy || trainable.length === 0}>
-            🚀 Train เอกสาร
-          </button>
-        </div>
-        {trainable.length === 0 && <div className="km-empty">ยังไม่มีเอกสารที่แปลงรูปแล้ว — อัปโหลดด้านบนก่อน</div>}
       </div>
 
       {/* ── Modal เลือกไฟล์ Train ── */}
@@ -212,7 +234,15 @@ export default function KmPage() {
               </div>
             </div>
             {progress && (
-              <div className="km-prog">กำลังเทรน {progress.km_id} — หน้า {progress.i}/{progress.n}</div>
+              <div className="km-prog">
+                <div className="km-prog-lbl">
+                  กำลังเทรน {docs.find(d => d.km_id === progress.km_id)?.source_file || progress.km_id} — หน้า {progress.i}/{progress.n}
+                </div>
+                <div className={'km-bar' + (progress.n > 0 ? '' : ' indet')}>
+                  <div className="km-bar-fill"
+                       style={{ width: progress.n > 0 ? Math.round(progress.i / progress.n * 100) + '%' : '100%' }} />
+                </div>
+              </div>
             )}
             <div className="km-modal-foot">
               <button type="button" className="btn-back" onClick={() => setShowTrain(false)} disabled={busy}>
