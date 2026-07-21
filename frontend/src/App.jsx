@@ -10,6 +10,8 @@ import GraphPage from './components/GraphPage.jsx'
 import Footer from './components/Footer.jsx'
 import VoiceNav from './components/VoiceNav.jsx'
 import Login from './components/Login.jsx'
+import AdminUsersPage from './components/AdminUsersPage.jsx'
+import KmPage from './components/KmPage.jsx'
 import { installAuthFetch, setOnUnauthorized, fetchMe } from './auth.js'
 
 // routing แบบ hash ง่ายๆ (ไม่ต้องลง react-router)
@@ -28,6 +30,8 @@ function useRoute() {
   if (hash.startsWith('#/dashboard')) return 'dashboard'
   if (hash.startsWith('#/stats')) return 'stats'
   if (hash.startsWith('#/stt')) return 'stt'
+  if (hash.startsWith('#/km')) return 'km'
+  if (hash.startsWith('#/admin/users')) return 'admin-users'
   return 'home'
 }
 
@@ -86,6 +90,9 @@ export default function App() {
         {route === 'search' && <SearchPage />}
         {route === 'stats' && <DashboardPage />}
         {route === 'stt' && <SttPage />}
+        {route === 'km' && <KmPage />}
+        {/* admin เท่านั้น — ไม่ใช่ admin เด้งกลับหน้าแรก (backend เช็ค role ซ้ำอยู่แล้ว) */}
+        {route === 'admin-users' && (user?.role === 'admin' ? <AdminUsersPage /> : <Landing model={model} />)}
         <Footer />
       </div>
     )

@@ -564,9 +564,35 @@ export default function Landing({ model = '' }) {
           backdropFilter: 'blur(6px)', color: '#cdd8e6', font: '13px/1.5 system-ui, sans-serif',
         }}>
           <div style={{ fontWeight: 700, color: '#8fd6ff', marginBottom: 10 }}>
-            📎 เคสที่อ้างอิง ({refCases.length})
+            📎 อ้างอิง ({refCases.length})
           </div>
-          {refCases.map((c, i) => (
+          {refCases.map((c, i) => c.kind === 'km' ? (
+            // ── การ์ดเอกสาร KM (คนละหน้าตากับเคส MTN) ──
+            <div key={c.case_id + i} style={{
+              marginBottom: 12, padding: '10px 12px', borderRadius: 12,
+              background: 'rgba(28,22,44,.7)', border: '1px solid rgba(150,130,220,.28)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, color: '#e7dcff' }}>📄 {c.source_file || c.case_id}</span>
+                <span style={{
+                  fontSize: 10, padding: '2px 7px', borderRadius: 999,
+                  background: 'rgba(150,110,240,.22)', color: '#cbb4ff', fontWeight: 700,
+                }}>KM</span>
+              </div>
+              {c.folder && <div style={{ opacity: .7, marginTop: 3, fontSize: 11.5 }}>📁 {c.folder}</div>}
+              {(c.summary || c.solution) && (
+                <div style={{
+                  marginTop: 8, fontSize: 12.5, lineHeight: 1.55, color: '#d7d0ea',
+                  maxHeight: 260, overflowY: 'auto', whiteSpace: 'pre-wrap',
+                  paddingRight: 4,
+                }}>{c.summary || c.solution}</div>
+              )}
+              <a href={'#/km'} style={{
+                display: 'inline-block', marginTop: 10, fontSize: 11.5, color: '#b9a9f5',
+                textDecoration: 'none',
+              }}>เปิดหน้าคลัง KM →</a>
+            </div>
+          ) : (
             <div key={c.case_id + i} style={{
               marginBottom: 12, padding: '10px 12px', borderRadius: 12,
               background: 'rgba(20,28,40,.7)', border: '1px solid rgba(120,140,170,.2)',

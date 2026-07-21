@@ -10,10 +10,10 @@ const MODELS = {
   emb: '/models/oww/embedding_model.onnx',
   ww: '/models/oww/hey_jarvis_v0.1.onnx',
 }
-const DEFAULT_THRESHOLD = 0.35   // score เกินนี้ = ปลุก (หลังแก้ให้เสียงต่อเนื่อง peak ควรสูงขึ้น — จูนได้)
+const DEFAULT_THRESHOLD = 0.5    // score เกินนี้ = ปลุก (ยกจาก 0.35 -> ลด false wake ตอนไม่มีใครพูด — จูนได้)
 // ต้องได้ score เกิน threshold "ติดกัน" กี่เฟรมถึงจะปลุก (1 เฟรม = 80ms)
-// 2 เฟรม = กันนอยส์พีควูบเดียวปลุกเอง (false wake ตอนไม่มีใครพูด) แลกกับหน่วง +80ms
-const DEFAULT_TRIGGER_FRAMES = 2
+// 3 เฟรม = กันนอยส์พีควูบเดียวปลุกเอง (false wake) ดีขึ้น แลกกับหน่วง +240ms; คำจริงถือค้างได้สบาย
+const DEFAULT_TRIGGER_FRAMES = 3
 
 // resample เสียงจาก inRate -> 16000 (linear) ให้ตรงกับที่ openWakeWord ต้องการ
 // เบราว์เซอร์มักให้ 48000; ถ้าป้อน 48k เข้า pipeline ที่คิดว่า 16k -> feature เพี้ยนหมด

@@ -22,7 +22,7 @@ from starlette.concurrency import run_in_threadpool
 import os, sys, tempfile, re, time, shutil, json
 
 from transcribe import transcribe_audio, WHISPER_MODEL, WHISPER_DEVICE, STT_BASE_URL
-import rag, llm, tts, vault, auth
+import rag, llm, tts, vault, auth, km
 
 # บน Windows stdout ของ uvicorn เป็น cp1252 -> print ภาษาไทยใน except (log) จะ crash เอง
 # แล้วทำให้ graceful-degradation (คืน None/mock) กลายเป็น HTTP 500 แทน -> ตั้ง utf-8 กันไว้
@@ -246,36 +246,106 @@ class LoginIn(BaseModel):
     password: str
 
 
+class RegisterIn(BaseModel):
+    username: str
+    password: str
+    first_name: str
+    last_name: str
+    employee_id: str
+    email: str
+    phone: str = ""          # optional
+    role: str = "user"       # user | approver | admin
+
+
+def _current_user(authorization: str):
+    """ถอด token จาก header -> payload หรือ None (ใช้ซ้ำในหลาย endpoint)"""
+    prefix = "bearer "
+    if not authorization.lower().startswith(prefix):
+        return None
+    return auth.decode_token(authorization[len(prefix):].strip())
+
+
 @app.post("/api/login")
 async def api_login(body: LoginIn):
-    """login บัญชี admin (ค่าอยู่ใน .env) -> คืน JWT ไว้แนบ header: Authorization: Bearer <token>
+    """login ด้วยบัญชีในตาราง users (MSSQL) -> คืน JWT แนบ header: Authorization: Bearer <token>
 
     ตอบ error กลางๆ เหมือนกันหมด ไม่บอกว่า "user ผิด" หรือ "รหัสผิด"
     (บอกแยก = ช่วยคนเดาว่ามี user นี้จริงไหม)
     """
     if not auth.auth_ready():
-        # ตั้ง .env ไม่ครบ -> ปฏิเสธ ไม่ปล่อยผ่าน (fail closed) + บอก log ให้คนดูแลรู้ว่าตั้งไม่ครบ
-        print("[auth] ยังตั้ง .env ไม่ครบ (ADMIN_USERNAME / ADMIN_PASSWORD / JWT_SECRET) -> login ปิดไว้")
+        # ไม่ตั้ง JWT_SECRET / ต่อ DB ไม่ได้ -> ปฏิเสธ (fail closed)
+        print("[auth] ยังไม่พร้อม (JWT_SECRET หรือ DB) -> login ปิดไว้")
         return JSONResponse({"error": "auth ยังไม่พร้อมใช้งาน"}, status_code=503)
-    if not auth.verify_login(body.username, body.password):
+    user = auth.verify_login(body.username, body.password)
+    if not user:
         return JSONResponse({"error": "username หรือ password ไม่ถูกต้อง"}, status_code=401)
     return {
-        "access_token": auth.create_token(body.username),
+        "access_token": auth.create_token(user),
         "token_type": "bearer",
         "expires_in": auth.JWT_EXPIRE_MIN * 60,
     }
 
 
+@app.post("/api/register")
+async def api_register(body: RegisterIn, authorization: str = Header("")):
+    """เพิ่ม user ใหม่ — admin เท่านั้น (ตามฟอร์ม "Only admins can add new users")
+
+    เช็คสิทธิ์จาก token จริง ไม่ใช่เชื่อค่าที่ frontend ส่งมา
+    """
+    payload = _current_user(authorization)
+    if not payload:
+        return JSONResponse({"error": "ต้อง login ก่อน"}, status_code=401)
+    if payload.get("role") != "admin":
+        return JSONResponse({"error": "เฉพาะ admin เท่านั้นที่เพิ่มผู้ใช้ได้"}, status_code=403)
+
+    # validate ขั้นต่ำ
+    required = {
+        "username": body.username, "password": body.password,
+        "first_name": body.first_name, "last_name": body.last_name,
+        "employee_id": body.employee_id, "email": body.email,
+    }
+    missing = [k for k, v in required.items() if not (v or "").strip()]
+    if missing:
+        return JSONResponse({"error": f"กรอกไม่ครบ: {', '.join(missing)}"}, status_code=400)
+    if body.role not in ("user", "approver", "admin"):
+        return JSONResponse({"error": "role ไม่ถูกต้อง"}, status_code=400)
+
+    clash = auth.username_exists(body.username, body.email, body.employee_id)
+    if clash:
+        label = {"username": "ชื่อผู้ใช้", "email": "อีเมล", "employee_id": "รหัสพนักงาน"}[clash]
+        return JSONResponse({"error": f"{label}นี้มีอยู่แล้ว"}, status_code=409)
+
+    try:
+        new_id = auth.create_user(
+            username=body.username.strip(), password=body.password,
+            first_name=body.first_name.strip(), last_name=body.last_name.strip(),
+            employee_id=body.employee_id.strip(), email=body.email.strip(),
+            phone=(body.phone or "").strip() or None, role=body.role,
+        )
+    except Exception as e:
+        print(f"[auth] register ล้มเหลว: {type(e).__name__}: {e}")
+        return JSONResponse({"error": "เพิ่มผู้ใช้ไม่สำเร็จ"}, status_code=500)
+    return {"id": new_id, "username": body.username, "role": body.role}
+
+
+@app.get("/api/users")
+async def api_users(authorization: str = Header("")):
+    """รายชื่อ user ทั้งหมด (admin เท่านั้น) — ให้หน้า admin โชว์ตาราง"""
+    payload = _current_user(authorization)
+    if not payload:
+        return JSONResponse({"error": "ต้อง login ก่อน"}, status_code=401)
+    if payload.get("role") != "admin":
+        return JSONResponse({"error": "เฉพาะ admin"}, status_code=403)
+    return {"users": auth.list_users()}
+
+
 @app.get("/api/me")
 async def api_me(authorization: str = Header("")):
     """เช็คว่า token ยังใช้ได้ไหม (ให้ frontend ถามตอนเปิดหน้า) -> คืนข้อมูล user ใน token"""
-    prefix = "bearer "
-    if not authorization.lower().startswith(prefix):
-        return JSONResponse({"error": "ไม่ได้แนบ token"}, status_code=401)
-    payload = auth.decode_token(authorization[len(prefix):].strip())
+    payload = _current_user(authorization)
     if not payload:
         return JSONResponse({"error": "token ไม่ถูกต้องหรือหมดอายุ"}, status_code=401)
-    return {"username": payload.get("sub"), "role": payload.get("role")}
+    return {"username": payload.get("sub"), "role": payload.get("role"), "uid": payload.get("uid")}
 
 
 # รายชื่อโมเดลให้ frontend ทำ dropdown — แยก local (Ollama) / api (คลาวด์)
@@ -380,12 +450,12 @@ async def api_case(case_id: str):
     if not cid:
         return JSONResponse({"error": "no case_id"}, status_code=400)
     try:
-        cases = await run_in_threadpool(rag.load_cases)
+        # get_case รวมทั้งเคส MTN และเอกสาร KM -> citation KM คลิกดูได้เหมือนเคส
+        c = await run_in_threadpool(rag.get_case, cid)
     except Exception:
-        cases = []
-    for c in cases:
-        if c.get("case_id") == cid:
-            return {"found": True, "mock": False, "case": c}
+        c = None
+    if c:
+        return {"found": True, "mock": False, "case": c}
     mc = _mock_case(cid)
     if mc:
         return {"found": True, "mock": True, "case": mc}
@@ -666,6 +736,160 @@ async def transcribe_endpoint(request: Request):
     # transcribe_audio ใส่ timestamp "[00.5s] ..." ต่อบรรทัด — คำถามสั้นๆ ไม่ต้องการ เลยตัดทิ้ง
     clean = re.sub(r"^\[[0-9.]+s\]\s*", "", text, flags=re.M).replace("\n", " ").strip()
     return {"text": clean, "seconds": seconds, "is_mock": text.lstrip().startswith("[MOCK")}
+
+
+# ─────────────────────────────────────────────────────────────
+# KM (Knowledge Management) — อัปโหลดเอกสาร -> PNG -> train เป็นบทสรุป (แทน scg-km-webchat + n8n)
+# บทสรุปเข้า index เดียวกับเคส -> ถามที่หน้าแรกเจอทั้ง KM และเคส MTN
+# ─────────────────────────────────────────────────────────────
+def _reindex_cache():
+    """ล้าง cache ของ rag เพื่อให้ index ใหม่ (เคส+KM) รอบถามถัดไป"""
+    rag._CACHE.update(key=None, cases=None, vecs=None, vocab=None)
+
+
+@app.get("/api/km/folders")
+async def api_km_folders():
+    """โครงโฟลเดอร์ใน vault (ไว้เลือกที่เก็บตอนอัปโหลด)"""
+    tree = await run_in_threadpool(vault.list_vault_tree)
+    return {"tree": tree}
+
+
+@app.post("/api/km/folders")
+async def api_km_folder_create(request: Request):
+    """สร้างโฟลเดอร์ใหม่ใน vault (ปุ่ม 'เพิ่มโฟลเดอร์')"""
+    body = await request.json()
+    rel = (body.get("path") or "").strip()
+    if not rel:
+        return JSONResponse({"error": "no path"}, status_code=400)
+    try:
+        created = await run_in_threadpool(vault.make_folder, rel)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, "path": created}
+
+
+@app.post("/api/km/upload")
+async def api_km_upload(request: Request):
+    """อัปโหลดเอกสารเข้า vault + แปลงทุกหน้าเป็น PNG (Word/PDF/PPT/Excel)
+    multipart: file (หลายไฟล์ได้) + targetPath + category + machine"""
+    f = await request.form()
+    files = f.getlist("file")
+    files = [x for x in files if getattr(x, "filename", "")]
+    if not files:
+        return JSONResponse({"error": "no file"}, status_code=400)
+    target = (f.get("targetPath") or "").strip()
+    category = (f.get("category") or "").strip()
+    machine = (f.get("machine") or "").strip()
+
+    def _one(tmp_path, filename):
+        # เขียนไฟล์ดิบ + metadata + asset folder แล้วแปลง PNG
+        res = vault.save_km_upload(target, tmp_path, filename, category, machine)
+        asset_abs = vault._vault_join(res["asset_rel"])
+        pngs = km.convert_to_png(tmp_path, str(asset_abs))
+        vault.set_km_converted(res["meta_rel"], res["km_id"], len(pngs))
+        return {"km_id": res["km_id"], "source_file": filename,
+                "png_count": len(pngs), "folder": res["folder"],
+                "ok": len(pngs) > 0}
+
+    results = []
+    for up in files:
+        tmp = _save_upload(up)
+        try:
+            results.append(await run_in_threadpool(_one, tmp, up.filename))
+        except Exception as e:
+            results.append({"source_file": up.filename, "ok": False, "error": str(e)})
+    return {"results": results}
+
+
+@app.get("/api/km/list")
+async def api_km_list():
+    """รายการ KM doc ทั้งหมด + สถานะ (โชว์ในหน้า KM)"""
+    docs = await run_in_threadpool(vault.find_km_docs)
+    return {"docs": docs}
+
+
+@app.get("/api/km/not-trained")
+async def api_km_not_trained():
+    """KM ที่แปลง PNG แล้วแต่ยังไม่ train"""
+    docs = await run_in_threadpool(vault.find_km_docs)
+    todo = [d for d in docs if d.get("training_status") != "Trained" and d.get("png_count", 0) > 0]
+    return {"docs": todo}
+
+
+@app.get("/api/km/asset")
+async def api_km_asset(path: str = Query("")):
+    """เสิร์ฟรูป PNG ในหน้า KM (อยู่ใต้ /api/ = ต้อง JWT). กันพาธหลุดออกนอก vault"""
+    from fastapi.responses import FileResponse
+    try:
+        p = vault._vault_join(path.strip())
+    except Exception:
+        return JSONResponse({"error": "bad path"}, status_code=400)
+    if not p.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(str(p))
+
+
+class KmTrainIn(BaseModel):
+    km_ids: list[str] = []
+    model: str = ""
+
+
+def _train_stream(km_ids, model):
+    """generator: train KM ทีละตัว ทีละหน้า -> yield NDJSON progress
+    แต่ละหน้า analyze (Azure vision) -> รวม Slide Analysis -> summary -> ถ้า Morning Talk แตกเคส MTN"""
+    docs = {d["km_id"]: d for d in vault.find_km_docs()}
+    made_case = False
+    for km_id in km_ids:
+        d = docs.get(km_id)
+        if not d:
+            yield json.dumps({"type": "error", "km_id": km_id, "msg": "ไม่พบ KM"}) + "\n"
+            continue
+        asset_abs = vault._vault_join(d["folder"] + "/" + km_id)
+        pngs = sorted(asset_abs.glob("Slide*.png"))
+        total = len(pngs)
+        yield json.dumps({"type": "start", "km_id": km_id, "slides": total}) + "\n"
+        parts = []
+        for i, png in enumerate(pngs, start=1):
+            analysis = km.analyze_slide(str(png), model)
+            parts.append(f"## Slide {i}\n{analysis}")
+            yield json.dumps({"type": "slide", "km_id": km_id, "i": i, "n": total}) + "\n"
+        analysis_md = "\n\n".join(parts)
+        vault.set_km_trained(d["meta_rel"], analysis_md, total)
+        # บทสรุปย่อ
+        summary = km.summarize(analysis_md, model)
+        vault.save_km_summary(d["folder"], km_id, summary,
+                              category=d.get("category", ""), source_file=d.get("source_file", ""))
+        # Morning Talk -> แตกเคส MTN เข้า cases/ (ดูจากชื่อโฟลเดอร์/พาธที่อัปโหลด ไม่ใช่ช่องหมวด)
+        n_cases = 0
+        path_l = (d.get("folder", "") + " " + d.get("target", "")).casefold().replace(" ", "")
+        if "morning" in path_l:
+            for c in km.extract_cases(analysis_md, model):
+                fields = {
+                    "machine": c.get("machine", ""), "component": c.get("component", ""),
+                    "plant": "", "department": "", "line": "",
+                    "source": f"KM {km_id}", "category": c.get("category", ""),
+                    "severity": c.get("severity", "medium"), "status": "resolved",
+                    "downtime_min": "", "parts_used": "", "tags": c.get("tags") or [],
+                    "symptom": c.get("symptom", ""), "cause": c.get("cause", ""),
+                    "solution": c.get("solution", ""), "result": c.get("result", ""),
+                }
+                _, cid = vault.save_case(fields)
+                if cid:
+                    n_cases += 1
+                    made_case = True
+        yield json.dumps({"type": "done", "km_id": km_id, "slides": total,
+                          "cases": n_cases}) + "\n"
+    _reindex_cache()   # KM summary (และเคสใหม่) เข้า index รอบถามถัดไป
+    yield json.dumps({"type": "all_done"}) + "\n"
+
+
+@app.post("/api/km/train")
+async def api_km_train(body: KmTrainIn):
+    """train KM ที่เลือก -> สตรีม progress ต่อหน้า (NDJSON). งานยาว = สตรีมดีกว่ารอทั้งก้อน"""
+    if not body.km_ids:
+        return JSONResponse({"error": "no km_ids"}, status_code=400)
+    return StreamingResponse(_train_stream(body.km_ids, body.model.strip()),
+                             media_type="application/x-ndjson")
 
 
 # ─────────────────────────────────────────────────────────────

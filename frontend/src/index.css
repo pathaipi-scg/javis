@@ -664,3 +664,56 @@ select.case-input option { background: #0a0d1c; color: #eef1fb; }
   .login-wrap > .login-glow,
   .login-card::before { animation: none; }
 }
+
+/* ── หน้า KM (คลังความรู้) ── */
+.km-wrap { max-width: 980px; }
+.km-wrap .case-card { margin-bottom: 22px; }
+.km-cols { display: grid; grid-template-columns: 320px 1fr; gap: 22px; align-items: start; }
+.km-tree { background: rgba(8,10,22,.6); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 10px; max-height: 62vh; overflow: auto; position: sticky; top: 16px; }
+.km-tree-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 10px; color: #9aa4c4; font-size: 13px; font-weight: 600; }
+.km-tree-row { display: flex; align-items: center; gap: 4px; padding: 5px 6px; border-radius: 8px; cursor: default; font-size: 13.5px; color: #c7cde0; }
+.km-tree-row:hover { background: rgba(255,255,255,.05); }
+.km-tree-row.on { background: linear-gradient(135deg, rgba(75,123,255,.28), rgba(139,92,246,.28)); color: #fff; }
+.km-tree-tw { width: 14px; text-align: center; cursor: pointer; color: #7f88a9; }
+.km-tree-name { cursor: pointer; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.km-target { color: #9aa4c4; font-size: 13.5px; margin-bottom: 8px; }
+.km-target b { color: #b9a9f5; }
+.km-files { color: #9aa4c4; font-size: 12.5px; margin-top: 6px; word-break: break-all; }
+.km-hint, .km-empty { color: #8b93b3; font-size: 12.5px; margin-top: 10px; }
+.km-msg { white-space: pre-wrap; background: rgba(8,10,22,.7); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 12px 14px; color: #cfe0ff; font-size: 13px; margin-top: 16px; font-family: 'Anuphan', sans-serif; }
+.km-list { display: flex; flex-direction: column; gap: 10px; }
+.km-item { display: flex; gap: 12px; align-items: flex-start; background: rgba(8,10,22,.5); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; padding: 14px 16px; cursor: pointer; }
+.km-item input[type=checkbox] { margin-top: 4px; width: 17px; height: 17px; accent-color: #7c5cff; }
+.km-item-body { flex: 1; min-width: 0; }
+.km-item-title { color: #eef1fb; font-weight: 600; font-size: 14.5px; }
+.km-item-meta { color: #9aa4c4; font-size: 12.5px; margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.km-badge { padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
+.km-badge.ok { background: rgba(52,199,120,.18); color: #6ee7a6; }
+.km-badge.todo { background: rgba(255,190,60,.16); color: #ffce7a; }
+.km-thumbs { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.km-thumb { width: 76px; height: 54px; border-radius: 7px; overflow: hidden; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); }
+.km-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.km-thumb-ph { display: block; width: 100%; height: 100%; }
+.km-prog { color: #b9a9f5; font-size: 13.5px; margin-top: 14px; }
+.km-summary .case-actions { margin-top: 6px; }
+@media (max-width: 760px) { .km-cols { grid-template-columns: 1fr; } .km-tree { position: static; max-height: 300px; } }
+
+/* ── Modal Train (theme Jarvis) ── */
+.km-modal-back { position: fixed; inset: 0; z-index: 200; background: rgba(4,6,16,.66); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; animation: km-fade .16s ease; }
+@keyframes km-fade { from { opacity: 0 } to { opacity: 1 } }
+.km-modal { width: min(760px, 96vw); max-height: 88vh; display: flex; flex-direction: column; background: linear-gradient(180deg, rgba(24,27,48,.98), rgba(14,16,32,.98)); border: 1px solid rgba(139,140,255,.28); border-radius: 20px; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03) inset; overflow: hidden; }
+.km-modal-head { padding: 22px 26px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.km-modal-head h3 { margin: 0; font-family: 'Sora','Anuphan',sans-serif; font-size: 20px; font-weight: 700; color: #fff; }
+.km-modal-head span { display: block; margin-top: 5px; color: #9aa4c4; font-size: 12.5px; }
+.km-modal-table { flex: 1; overflow: auto; padding: 6px 14px; }
+.km-mt-head, .km-mt-row { display: grid; grid-template-columns: 40px 1fr 1.1fr 52px 88px; align-items: center; gap: 8px; padding: 10px 12px; }
+.km-mt-head { position: sticky; top: 0; background: rgba(14,16,32,.96); color: #8b93b3; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; z-index: 1; }
+.km-mt-row { border-radius: 10px; cursor: pointer; font-size: 13.5px; color: #dfe6ff; }
+.km-mt-row:hover { background: rgba(124,124,255,.09); }
+.km-mt-ck input { width: 17px; height: 17px; accent-color: #7c5cff; cursor: pointer; }
+.km-mt-file { min-width: 0; font-weight: 600; color: #eef1fb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.km-mt-path { min-width: 0; color: #9aa4c4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.km-mt-n { text-align: right; color: #b9a9f5; font-variant-numeric: tabular-nums; }
+.km-mt-st { text-align: right; }
+.km-modal-foot { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 26px; border-top: 1px solid rgba(255,255,255,.08); }
+.km-modal .km-prog { padding: 0 26px; }

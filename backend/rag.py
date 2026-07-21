@@ -498,6 +498,86 @@ def load_cases():
     return cases
 
 
+def _km_strip_meta(txt):
+    """แยก metadata + เนื้อสรุปออกจากไฟล์ *_summary.md — รองรับ 2 รูปแบบ:
+      1) frontmatter YAML (--- ... ---) ที่หน้า KM ของ jarvis เขียน
+      2) '# KM Information' + 'Key : Value' ของ scg-km-webchat เดิม
+    คืน (meta:dict, body:str) โดย body ตัด metadata ทิ้งแล้ว (เหลือบทสรุป/Slide Analysis)"""
+    meta = {}
+    rest = txt
+    # 1) YAML frontmatter
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", rest, re.S)
+    if m:
+        for line in m.group(1).splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                meta[k.strip()] = v.strip()
+        rest = rest[m.end():]
+    # 2) '# KM Information' block (km-webchat) — เก็บ Key : Value จนเจอบรรทัดเนื้อหา
+    lines = rest.splitlines()
+    if lines and lines[0].strip() == "# KM Information":
+        i = 1
+        while i < len(lines):
+            s = lines[i].strip()
+            mm = re.match(r"^([A-Za-z_]+)\s*:\s*(.*)$", s)
+            if s == "" or mm:
+                if mm and mm.group(1) not in meta:
+                    meta[mm.group(1)] = mm.group(2).strip()
+                i += 1
+                continue
+            break
+        rest = "\n".join(lines[i:]).strip()
+    return meta, rest.strip()
+
+
+def load_km_docs():
+    """อ่านบทสรุป KM (ไฟล์ *_summary.md ที่หน้า KM สร้างตอน train) เป็น pseudo-doc
+    ให้เข้า index เดียวกับเคส -> ถามหน้าเดียวเจอทั้ง KM และเคส MTN
+    คืน list ของ dict รูปเดียวกับเคส (case_id = KM_ID, kind='km') หรือ [] ถ้าไม่มี"""
+    if not VAULT_PATH:
+        return []
+    root = Path(VAULT_PATH)
+    if not root.exists():
+        return []
+    docs = []
+    for f in sorted(root.rglob("*_summary.md")):
+        try:
+            txt = f.read_text(encoding="utf-8-sig")
+        except Exception:
+            continue
+        meta, body = _km_strip_meta(txt)
+        if not body:
+            continue
+        km_id = meta.get("KM_ID") or f.stem.replace("_summary", "")
+        source_file = meta.get("Source_File") or km_id
+        try:
+            folder = str(f.parent.resolve().relative_to(root.resolve())).replace("\\", "/")
+        except Exception:
+            folder = ""
+        docs.append({
+            "case_id":    km_id,
+            "machine":    "",
+            "symptom":    f"เอกสาร KM: {source_file}",
+            "cause":      "",
+            "solution":   body,          # เนื้อสรุปโชว์ใน _case_ctx (ช่อง 'วิธีแก้')
+            "result":     "",
+            "component":  "",
+            "category":   meta.get("Category", "KM"),
+            "plant":      "",
+            "department": "",
+            "severity":   "",
+            "downtime_min": 0,
+            "tags":       [],
+            "repair_date": "",
+            "kind":       "km",
+            "source_file": source_file,   # ให้ sidebar โชว์ชื่อไฟล์
+            "folder":     folder,         # ที่เก็บใน vault
+            "summary":    body,           # บทสรุป (sidebar KM ใช้ช่องนี้)
+            "_text":      body,           # ข้อความที่ใช้ embed
+        })
+    return docs
+
+
 # ---------- embeddings (bge-m3 ผ่าน Ollama) ----------
 def _normalize_base(url):
     url = (url or "").rstrip("/")
@@ -585,8 +665,9 @@ _CACHE = {"key": None, "cases": None, "vecs": None}
 
 
 def _ensure_index():
-    """โหลดเคส + embed (ใช้ cache ถ้าเนื้อไม่เปลี่ยน). คืน (cases, vecs) หรือ (None,None)"""
-    cases = load_cases()
+    """โหลดเคส + KM docs แล้ว embed (ใช้ cache ถ้าเนื้อไม่เปลี่ยน). คืน (docs, vecs) หรือ (None,None)
+    รวมเคส MTN + บทสรุป KM เข้า corpus เดียว -> ถามหน้าเดียวค้นเจอทั้งคู่ (unified ask)"""
+    cases = load_cases() + load_km_docs()
     if not cases:
         return None, None
     key = tuple(c["case_id"] + c["_text"] for c in cases)
@@ -604,7 +685,8 @@ def get_case(case_id):
     cid = (case_id or "").strip().casefold()
     if not cid:
         return None
-    for c in load_cases():
+    # รวม KM docs ด้วย เพื่อให้ citation ของ KM (คลิกจาก sidebar) เปิดดูได้เหมือนเคส
+    for c in load_cases() + load_km_docs():
         if c["case_id"].casefold() == cid:
             return {k: v for k, v in c.items() if not k.startswith("_")}
     return None

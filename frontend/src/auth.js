@@ -55,6 +55,26 @@ export async function login(username, password) {
   return data
 }
 
+// เพิ่ม user ใหม่ (admin เท่านั้น — backend เช็ค role จาก token) — payload = ฟอร์ม AddUser
+export async function registerUser(payload) {
+  const res = await fetch('/api/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'เพิ่มผู้ใช้ไม่สำเร็จ')
+  return data
+}
+
+// รายชื่อ user ทั้งหมด (admin เท่านั้น) — คืน array
+export async function fetchUsers() {
+  const res = await fetch('/api/users')
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'โหลดรายชื่อไม่สำเร็จ')
+  return data.users || []
+}
+
 // เช็คว่า token ที่เก็บไว้ยังใช้ได้ไหม (เรียกตอนเปิดหน้า) — คืน user หรือ null
 export async function fetchMe() {
   if (!getToken()) return null

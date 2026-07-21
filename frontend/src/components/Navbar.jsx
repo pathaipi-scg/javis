@@ -12,6 +12,7 @@ export default function Navbar({ models = { local: [], api: [] }, model = '', se
       <div className="nav-links">
         <a href="#/">หน้าแรก</a>
         <a href="#/case">ป้อนเคส</a>
+        <a href="#/km">คลัง KM</a>
         <a href="#/search">ค้นเคส</a>
         <a href="#/graph">Graph</a>
         <a href="#/stt">ทดสอบ STT</a>
@@ -37,6 +38,10 @@ export default function Navbar({ models = { local: [], api: [] }, model = '', se
           </label>
         )}
         <a href="#/" className="btn-grad">เริ่มใช้งาน</a>
+        {/* เพิ่มผู้ใช้ — โชว์เฉพาะ admin, theme เดียวกับปุ่มอื่น (ม่วง gradient) */}
+        {user?.role === 'admin' && (
+          <a href="#/admin/users" className="btn-grad" title="เพิ่ม/จัดการผู้ใช้">จัดการผู้ใช้</a>
+        )}
         {/* ชื่อคนที่ login อยู่ — มาจาก /api/me (server ถอดจาก token) ไม่ใช่ช่องที่ผู้ใช้พิมพ์ */}
         {user?.username && (
           <span className="nav-user" title={`เข้าใช้งานเป็น ${user.username}`}>

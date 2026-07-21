@@ -1,111 +1,98 @@
 """
-auth.py — login + JWT ของ JARVIS (ตอนนี้มีแค่บัญชี admin ตัวเดียวไว้ทดสอบ)
+auth.py — login + JWT ของ JARVIS (บัญชีอยู่ในตาราง users บน MSSQL)
 
-แนวคิด: เทียบ username/password กับค่าใน .env ตรงๆ (ยังไม่มี DB ผู้ใช้)
-  ADMIN_USERNAME  / ADMIN_PASSWORD   -> บัญชีที่ 1
-  ADMIN2_USERNAME / ADMIN2_PASSWORD  -> บัญชีที่ 2
-  ADMIN3_USERNAME / ADMIN3_PASSWORD  -> บัญชีที่ 3   (เพิ่มได้ถึง ADMIN10_*)
-  JWT_SECRET                         -> กุญแจเซ็น token (ต้องตั้งเอง ไม่มีค่า default)
+เดิมอ่านบัญชีจาก .env — ตอนนี้ query ตาราง dbo.users แทน (ดู db.py)
+รหัสเก็บเป็น bcrypt hash ในคอลัมน์ password_hash — ห้ามเก็บ plaintext
 
 *** ต่างจากโมดูลอื่นในโปรเจกต์นี้ตรงที่ "ห้าม degrade เป็น mock" ***
-llm.py / rag.py / transcribe.py ออกแบบให้ต่อ backend ไม่ติดแล้วคืน mock เพื่อให้เดโมไหลต่อได้
-แต่ auth ห้ามทำแบบนั้นเด็ดขาด — ตั้ง env ไม่ครบ = ปฏิเสธ login ทุกกรณี (fail closed)
-ไม่งั้น "ลืมตั้ง .env" จะกลายเป็น "ใครก็ login ได้"
+llm.py / rag.py / transcribe.py ต่อ backend ไม่ติดแล้วคืน mock เพื่อให้เดโมไหลต่อ
+แต่ auth ห้ามทำแบบนั้น — DB ต่อไม่ได้ / ไม่ตั้ง JWT_SECRET = ปฏิเสธ login ทุกกรณี (fail closed)
+ไม่งั้น "DB ล่ม" กลายเป็น "ใครก็ login ได้"
 """
 import os
-import secrets
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import jwt   # PyJWT
 
+import db
+
 # ── config จาก .env (ไม่มีค่า default สำหรับความลับ — ไม่ตั้ง = login ไม่ได้) ──
-# หมายเหตุ: ห้ามใช้ชื่อ USERNAME! Windows ตั้ง env USERNAME ไว้อยู่แล้ว (= ชื่อ user ที่ล็อกอินเครื่อง)
-# แล้ว load_dotenv() ก็ไม่ override ของเดิม -> os.getenv("USERNAME") จะได้ชื่อ user ของ Windows
-# ไม่ใช่ค่าที่เขียนใน .env -> จึงใช้ ADMIN_USERNAME ที่ไม่ชนกับใคร
 JWT_SECRET     = os.getenv("JWT_SECRET", "")
 JWT_ALGORITHM  = "HS256"
 JWT_EXPIRE_MIN = int(os.getenv("JWT_EXPIRE_MIN", "60"))   # อายุ token (นาที)
 
-MAX_ADMINS = 10   # เพดานที่วิ่งหาใน .env (ADMIN2_* .. ADMIN10_*)
+# hash ปลอมไว้เทียบเวลา user ไม่มีจริง — ให้ bcrypt ทำงานเท่ากันทั้ง 2 ทาง
+# กัน timing attack ที่ใช้เวลาตอบต่างกันเดาว่ามี username นี้ไหม
+_DUMMY_HASH = bcrypt.hashpw(b"dummy", bcrypt.gensalt()).decode()
 
 
-def _load_users():
-    """อ่านบัญชีทั้งหมดจาก .env -> {username: password}
-
-    คนที่ 1 ใช้ชื่อเดิม ADMIN_USERNAME/ADMIN_PASSWORD (ของเดิมไม่ต้องแก้)
-    คนถัดไปเติมเลข: ADMIN2_USERNAME/ADMIN2_PASSWORD, ADMIN3_... ไปเรื่อยๆ
-
-    ไม่ตั้งรหัสเฉพาะตัว (ADMIN2_PASSWORD) -> ตกมาใช้ ADMIN_PASSWORD ร่วมกัน
-    ตั้งเฉพาะตัวเมื่อไหร่ อันนั้นชนะ -> ผสมกันได้ (บางคนรหัสร่วม บางคนรหัสส่วนตัว)
-    ระวัง: รหัสร่วมกัน = ใครรู้รหัสก็ login เป็นชื่อไหนก็ได้ ชื่อจึงเป็นแค่ป้าย ไม่ใช่ตัวตน
-
-    ไม่มี ADMIN_PASSWORD และไม่มีรหัสเฉพาะตัว = ข้ามบัญชีนั้น (กันบัญชีรหัสว่างหลุดเข้าไป)
-
-    ทำไมไม่ใช้ ADMIN_USERS=user1:pass1,user2:pass2 บรรทัดเดียว:
-    รหัสที่มี ":" หรือ "," อยู่ข้างในจะพังทันที — แยกตัวแปรปลอดภัยกว่า
-    """
-    users = {}
-    shared = os.getenv("ADMIN_PASSWORD", "")   # รหัสกลาง ใช้เมื่อคนนั้นไม่ได้ตั้งรหัสของตัวเอง
-    keys = [("ADMIN_USERNAME", "ADMIN_PASSWORD")]
-    keys += [(f"ADMIN{i}_USERNAME", f"ADMIN{i}_PASSWORD") for i in range(2, MAX_ADMINS + 1)]
-    for ukey, pkey in keys:
-        u = os.getenv(ukey, "").strip()
-        p = os.getenv(pkey, "") or shared
-        if u and p:
-            users[u] = p
-    return users
-
-
-USERS = _load_users()
+def hash_password(plain: str) -> str:
+    """แปลงรหัสเป็น bcrypt hash (เก็บลง password_hash) — คืน str"""
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode()
 
 
 def status_line():
-    """ข้อความสรุปสถานะ auth (นับอย่างเดียว — ไม่บอกชื่อ/รหัส) ให้ app.py พิมพ์ตอน startup
+    """ข้อความสรุปสถานะ auth ให้ app.py พิมพ์ตอน startup (นับ user อย่างเดียว)
 
     ห้ามพิมพ์ตอน import! app.py ตั้ง stdout เป็น utf-8 "หลัง" บรรทัด import
-    -> print ภาษาไทยตอน import จะเจอ cp1252 ของ Windows แล้ว UnicodeEncodeError ตั้งแต่เปิดเซิร์ฟเวอร์
     """
-    return (f"[auth] โหลดบัญชีจาก .env: {len(USERS)} คน"
-            + ("" if JWT_SECRET else " (ยังไม่ได้ตั้ง JWT_SECRET -> login ปิดไว้)"))
+    if not JWT_SECRET:
+        return "[auth] ยังไม่ได้ตั้ง JWT_SECRET -> login ปิดไว้"
+    try:
+        n = db.query_one("SELECT COUNT(*) AS n FROM dbo.users WHERE is_active = 1")["n"]
+        return f"[auth] ต่อ DB ({os.getenv('DB_NAME', 'jarvis_test')}) ได้: {n} บัญชีใช้งานอยู่"
+    except Exception as e:
+        return f"[auth] ต่อ DB ไม่ได้ -> login ปิดไว้ ({type(e).__name__})"
 
 
 def auth_ready():
-    """ตั้ง .env ครบพอให้ login ได้ไหม (ต้องมีอย่างน้อย 1 บัญชี + กุญแจเซ็น token)"""
-    return bool(USERS and JWT_SECRET)
-
-
-def _same(a, b):
-    """เทียบสตริงแบบเวลาคงที่ (กัน timing attack)
-
-    ต้อง .encode() เป็น bytes ก่อน! secrets.compare_digest รับ str ได้เฉพาะ ASCII
-    ถ้าโยนภาษาไทย/อักขระพิเศษเข้าไปตรงๆ มันโยน TypeError -> login พัง 500
-    """
-    return secrets.compare_digest((a or "").encode("utf-8"), (b or "").encode("utf-8"))
+    """ตั้ง .env ครบ + ต่อ DB ได้ไหม (ต้องมีกุญแจเซ็น token + DB reachable)"""
+    return bool(JWT_SECRET) and db.db_ready()
 
 
 def verify_login(username, password):
-    """เทียบ username/password กับบัญชีใน .env — คืน True/False
+    """เทียบ username/password กับ dbo.users — คืน dict ของ user ถ้าผ่าน, None ถ้าไม่
 
-    ใช้ compare_digest แทน == เพื่อกัน timing attack:
-    == หยุดทันทีที่เจอตัวอักษรต่างตัวแรก -> เวลาที่ใช้บอกใบ้ว่าเดาถูกกี่ตัว
-
-    วนครบทุกบัญชีเสมอ ไม่ break ตอนเจอ และเทียบทั้ง user/รหัสเสมอ (ใช้ & ไม่ใช่ and)
-    -> เวลาที่ใช้เท่ากันหมด ไม่บอกใบ้ว่ามี username นี้อยู่จริงไหม
+    - query เฉพาะ is_active=1 (บัญชีถูกปิด = login ไม่ได้)
+    - ไม่เจอ user ก็ยัง checkpw กับ hash ปลอม เพื่อให้เวลาตอบเท่ากัน (กัน enumeration)
     """
-    if not auth_ready():
-        return False
-    ok = False
-    for u, p in USERS.items():
-        ok |= _same(username, u) & _same(password, p)
-    return ok
+    if not JWT_SECRET:
+        return None
+    try:
+        u = db.query_one(
+            "SELECT id, username, password_hash, role, first_name, last_name "
+            "FROM dbo.users WHERE username = ? AND is_active = 1",
+            (username,),
+        )
+    except Exception:
+        return None   # DB ล่ม = ปฏิเสธ (fail closed) ไม่ปล่อยผ่าน
+
+    stored = u["password_hash"] if u else _DUMMY_HASH
+    try:
+        ok = bcrypt.checkpw((password or "").encode("utf-8"), stored.encode("utf-8"))
+    except Exception:
+        ok = False
+    if u and ok:
+        # อัพเดทเวลา login ล่าสุด (best-effort — ล้มก็ไม่บล็อก login)
+        try:
+            db.execute("UPDATE dbo.users SET last_login_at = SYSUTCDATETIME() WHERE id = ?", (u["id"],))
+        except Exception:
+            pass
+        return u
+    return None
 
 
-def create_token(username):
-    """ออก JWT ให้ user — มี exp/iat กัน token ใช้ได้ตลอดชีพ"""
+def create_token(user):
+    """ออก JWT ให้ user (dict จาก verify_login) — ใส่ role จริงจาก DB
+
+    รับ dict {id, username, role, ...} — ไม่ hardcode role แล้ว
+    """
     now = datetime.now(timezone.utc)
     payload = {
-        "sub": username,          # เจ้าของ token
-        "role": "admin",
+        "sub": user["username"],
+        "uid": user["id"],
+        "role": user["role"],
         "iat": now,
         "exp": now + timedelta(minutes=JWT_EXPIRE_MIN),
     }
@@ -115,8 +102,7 @@ def create_token(username):
 def decode_token(token):
     """ตรวจลายเซ็น + วันหมดอายุ — คืน payload ถ้าใช้ได้, None ถ้าไม่ผ่าน
 
-    ระบุ algorithms ตายตัว: ห้ามให้ token เป็นคนบอกว่าใช้ algorithm ไหน
-    (ไม่งั้นโดน alg=none / เปลี่ยนเป็น HS256 ปลอมลายเซ็น)
+    ระบุ algorithms ตายตัว: ห้ามให้ token เป็นคนบอกว่าใช้ algorithm ไหน (กัน alg=none)
     """
     if not JWT_SECRET:
         return None
@@ -124,3 +110,47 @@ def decode_token(token):
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.PyJWTError:
         return None
+
+
+# ── จัดการ user (ใช้โดย /api/register — admin เท่านั้น) ──────────────
+
+def username_exists(username, email=None, employee_id=None):
+    """เช็คซ้ำก่อน insert — คืน field ที่ชนถ้ามี ('username'|'email'|'employee_id') ไม่งั้น None"""
+    row = db.query_one(
+        "SELECT "
+        "  SUM(CASE WHEN username = ? THEN 1 ELSE 0 END)    AS u, "
+        "  SUM(CASE WHEN email = ? THEN 1 ELSE 0 END)       AS e, "
+        "  SUM(CASE WHEN employee_id = ? THEN 1 ELSE 0 END) AS emp "
+        "FROM dbo.users",
+        (username, email or "", employee_id or ""),
+    )
+    if row["u"]:   return "username"
+    if row["e"]:   return "email"
+    if row["emp"]: return "employee_id"
+    return None
+
+
+def create_user(username, password, first_name, last_name, employee_id, email,
+                phone=None, role="user"):
+    """เพิ่ม user ใหม่ (รหัส hash ก่อนเก็บ) — คืน id ที่เพิ่ง insert
+
+    ผู้เรียก (app.py) ต้องเช็คสิทธิ์ admin + validate มาก่อนแล้ว
+    """
+    row = db.query_one(
+        "INSERT INTO dbo.users "
+        "(username, password_hash, first_name, last_name, employee_id, email, phone, role) "
+        "OUTPUT INSERTED.id "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (username, hash_password(password), first_name, last_name,
+         employee_id, email, phone, role),
+    )
+    return row["id"]
+
+
+def list_users():
+    """รายชื่อ user ทั้งหมด (ไม่รวม password_hash) — ให้หน้า admin โชว์"""
+    return db.query_all(
+        "SELECT id, username, first_name, last_name, employee_id, email, phone, "
+        "role, is_active, created_at, last_login_at "
+        "FROM dbo.users ORDER BY id"
+    )
